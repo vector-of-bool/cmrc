@@ -23,7 +23,7 @@ set(this_script "${CMAKE_CURRENT_LIST_FILE}")
 set(CMRC_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_cmrc/include" CACHE INTERNAL "Directory for CMakeRC include files")
 # Let's generate the primary include file
 file(MAKE_DIRECTORY "${CMRC_INCLUDE_DIR}/cmrc")
-file(WRITE "${CMRC_INCLUDE_DIR}/cmrc/cmrc.hpp" [==[
+set(hpp_content [==[
 #ifndef CMRC_CMRC_HPP_INCLUDED
 #define CMRC_CMRC_HPP_INCLUDED
 
@@ -93,6 +93,15 @@ inline resource open(const std::string& fname) {
 #endif // CMRC_CMRC_HPP_INCLUDED
 ]==])
 
+set(cmrc_hpp "${CMRC_INCLUDE_DIR}/cmrc/cmrc.hpp")
+file(GENERATE OUTPUT "${cmrc_hpp}_" CONTENT "${hpp_content}")
+add_custom_command(
+    OUTPUT "${cmrc_hpp}"
+    DEPENDS "${cmrc_hpp}_"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${cmrc_hpp}_" "${cmrc_hpp}"
+    COMMENT "Generating cmrc header"
+    )
+
 add_library(cmrc-base INTERFACE)
 target_include_directories(cmrc-base INTERFACE "${CMRC_INCLUDE_DIR}")
 target_compile_features(cmrc-base INTERFACE cxx_nullptr)
@@ -144,11 +153,17 @@ function(cmrc_add_resource_library name)
         }
     ]=])
     get_filename_component(libdir "${CMAKE_CURRENT_BINARY_DIR}/${name}" ABSOLUTE)
-    get_filename_component(libcpp "${libdir}/lib.cpp" ABSOLUTE)
+    get_filename_component(lib_tmp_cpp "${libdir}/lib_.cpp" ABSOLUTE)
     string(REPLACE "%{libname}" "${name}" cpp_content "${cpp_content}")
     string(REPLACE "%{libident}" "${libident}" cpp_content "${cpp_content}")
     string(REPLACE "\n        " "\n" cpp_content "${cpp_content}")
-    file(GENERATE OUTPUT "${libcpp}" CONTENT "${cpp_content}")
+    file(GENERATE OUTPUT "${lib_tmp_cpp}" CONTENT "${cpp_content}")
+    get_filename_component(libcpp "${libdir}/lib.cpp" ABSOLUTE)
+    add_custom_command(OUTPUT "${libcpp}"
+        DEPENDS "${lib_tmp_cpp}" "${cmrc_hpp}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib_tmp_cpp}" "${libcpp}"
+        COMMENT "Generating ${name} resource loader"
+        )
     # Generate the actual static library. Each source file is just a single file
     # with a character array compiled in containing the contents of the
     # corresponding resource file.
