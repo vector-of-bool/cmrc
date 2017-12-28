@@ -1,12 +1,12 @@
-# CMakeRC - A CMake-Based Resoruce Compiler
+# CMakeRC - A CMake-Based Resource Compiler
 
 This projects provides a single CMake module, `CMakeRC.cmake` which can be used
 to add compile arbitrary files into binaries, and then load and read from them
-at runtime.
+at runtime. [Learn more here.](https://vector-of-bool.github.io/2017/01/21/cmrc.html)
 
 ## Installing
 
-Installing CMakeRC is meany to be as simple as possible. The only thing required
+Installing CMakeRC is meant to be as simple as possible. The only thing required
 is the `CMakeRC.cmake` script. You can copy it into your project directory or
 install it as a package and get all the features you need.
 
