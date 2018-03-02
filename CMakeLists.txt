@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.6)
 project(CMRCExample)
 
-include(CMakeToolsHelpers)
 include(CMakeRC.cmake)
 
 cmrc_add_resource_library(hello hello.txt)

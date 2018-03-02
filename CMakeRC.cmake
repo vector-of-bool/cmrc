@@ -1,15 +1,31 @@
 if(_CMRC_GENERATE_MODE)
     # Read in the digits
     file(READ "${INPUT_FILE}" bytes HEX)
-    # Format each pair into a character literal
-    string(REGEX REPLACE "(..)" "'\\\\x\\1', " chars "${bytes}")
-    file(WRITE "${OUTPUT_FILE}" "
-namespace { const char file_array[] = { ${chars} }; }
-namespace cmrc { namespace ${LIBRARY} { namespace res_chars {
-extern const char* const ${SYMBOL}_begin = file_array;
-extern const char* const ${SYMBOL}_end = file_array + sizeof(file_array);
+    # Format each pair into a character literal. Heuristics seem to favor doing
+    # the conversion in groups of five for fastest conversion
+    string(REGEX REPLACE "(..)(..)(..)(..)(..)" "\\\\x\\1\\\\x\\2\\\\x\\3\\\\x\\4\\\\x\\5" chars "${bytes}")
+    # Since we did this in groups, we have some leftovers to clean up
+    string(LENGTH "${bytes}" n_bytes2)
+    math(EXPR n_bytes "${n_bytes2} / 2")
+    math(EXPR remainder "${n_bytes} % 5") # <-- '5' is the grouping count from above
+    set(cleanup_re "$")
+    set(cleanup_sub )
+    while(remainder)
+        set(cleanup_re "(..)${cleanup_re}")
+        set(cleanup_sub "\\\\x\\${remainder}${cleanup_sub}")
+        math(EXPR remainder "${remainder} - 1")
+    endwhile()
+    if(NOT cleanup_re STREQUAL "$")
+        string(REGEX REPLACE "${cleanup_re}" "${cleanup_sub}" chars "${chars}")
+    endif()
+    string(CONFIGURE [[
+        namespace { const char file_array[] = { "@chars@" }; }
+        namespace cmrc { namespace @LIBRARY@ { namespace res_chars {
+        extern const char* const @SYMBOL@_begin = file_array;
+        extern const char* const @SYMBOL@_end = file_array + @n_bytes@;
 }}}
-")
+    ]] code)
+    file(WRITE "${OUTPUT_FILE}" "${code}")
     return()
 endif()
 
