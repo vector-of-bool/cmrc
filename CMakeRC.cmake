@@ -23,7 +23,7 @@ if(_CMRC_GENERATE_MODE)
         namespace cmrc { namespace @LIBRARY@ { namespace res_chars {
         extern const char* const @SYMBOL@_begin = file_array;
         extern const char* const @SYMBOL@_end = file_array + @n_bytes@;
-}}}
+        }}}
     ]] code)
     file(WRITE "${OUTPUT_FILE}" "${code}")
     return()
@@ -40,6 +40,8 @@ set(this_script "${CMAKE_CURRENT_LIST_FILE}")
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
+get_filename_component(_inc_dir "${CMAKE_BINARY_DIR}/_cmrc/include" ABSOLUTE)
+set(CMRC_INCLUDE_DIR "${_inc_dir}" CACHE INTERNAL "Directory for CMakeRC include files")
 # Let's generate the primary include file
 file(MAKE_DIRECTORY "${CMRC_INCLUDE_DIR}/cmrc")
 set(hpp_content [==[
@@ -189,6 +191,7 @@ function(cmrc_add_resource_library name)
     # with a character array compiled in containing the contents of the
     # corresponding resource file.
     add_library(${name} STATIC ${libcpp})
+    set_property(TARGET ${name} PROPERTY CMRC_LIBDIR "${libdir}")
     target_link_libraries(${name} PUBLIC cmrc::base)
     set_property(TARGET ${name} PROPERTY CMRC_IS_RESOURCE_LIBRARY TRUE)
     cmrc_add_resources(${name} ${ARGN})
@@ -212,6 +215,8 @@ function(cmrc_add_resources name)
 
     # Generate the identifier for the resource library's namespace
     string(MAKE_C_IDENTIFIER "${name}" libident)
+
+    get_target_property(libdir ${name} CMRC_LIBDIR)
 
     foreach(input IN LISTS ARG_UNPARSED_ARGUMENTS)
         get_filename_component(abs_input "${input}" ABSOLUTE)
