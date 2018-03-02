@@ -36,7 +36,10 @@ endif()
 
 set(this_script "${CMAKE_CURRENT_LIST_FILE}")
 
-set(CMRC_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_cmrc/include" CACHE INTERNAL "Directory for CMakeRC include files")
+# CMakeRC uses std::call_once().
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
+
 # Let's generate the primary include file
 file(MAKE_DIRECTORY "${CMRC_INCLUDE_DIR}/cmrc")
 set(hpp_content [==[
@@ -121,6 +124,7 @@ add_custom_command(
 add_library(cmrc-base INTERFACE)
 target_include_directories(cmrc-base INTERFACE "${CMRC_INCLUDE_DIR}")
 target_compile_features(cmrc-base INTERFACE cxx_nullptr)
+target_link_libraries(cmrc-base INTERFACE Threads::Threads)
 set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
