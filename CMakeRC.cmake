@@ -112,14 +112,15 @@ inline resource open(const std::string& fname) {
 #endif // CMRC_CMRC_HPP_INCLUDED
 ]==])
 
-set(cmrc_hpp "${CMRC_INCLUDE_DIR}/cmrc/cmrc.hpp")
-file(GENERATE OUTPUT "${cmrc_hpp}_" CONTENT "${hpp_content}")
-add_custom_command(
-    OUTPUT "${cmrc_hpp}"
-    DEPENDS "${cmrc_hpp}_"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${cmrc_hpp}_" "${cmrc_hpp}"
-    COMMENT "Generating cmrc header"
-    )
+set(cmrc_hpp "${CMRC_INCLUDE_DIR}/cmrc/cmrc.hpp" CACHE INTERNAL "")
+set(_generate 1)
+if(EXISTS "${cmrc_hpp}")
+    file(READ "${cmrc_hpp}" _current)
+    if(_current STREQUAL hpp_content)
+        set(_generate 0)
+    endif()
+endif()
+file(GENERATE OUTPUT "${cmrc_hpp}" CONTENT "${hpp_content}" CONDITION ${_generate})
 
 add_library(cmrc-base INTERFACE)
 target_include_directories(cmrc-base INTERFACE "${CMRC_INCLUDE_DIR}")
