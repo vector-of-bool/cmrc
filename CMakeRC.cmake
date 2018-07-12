@@ -34,7 +34,7 @@ if(COMMAND cmrc_add_resource_library)
     return()
 endif()
 
-set(this_script "${CMAKE_CURRENT_LIST_FILE}")
+set(cmakerc_script "${CMAKE_CURRENT_LIST_FILE}")
 
 # CMakeRC uses std::call_once().
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -66,6 +66,7 @@ class resource {
 public:
     const char* begin() const { return _begin; }
     const char* end() const { return _end; }
+    bool valid() const { return (_begin != nullptr && _end != nullptr); };
 
     resource() = default;
     resource(const char* beg, const char* end) : _begin(beg), _end(end) {}
@@ -132,6 +133,11 @@ set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
 function(cmrc_add_resource_library name)
+    set(options AUTOLOAD)
+    set(args)
+    set(list_args)
+    cmake_parse_arguments(PARSE_ARGV 1 ARG "${options}" "${args}" "${list_args}")
+
     # Generate the identifier for the resource library's namespace
     string(MAKE_C_IDENTIFIER "${name}" libident)
     # Generate a library with the compiled in character arrays.
@@ -159,7 +165,7 @@ function(cmrc_add_resource_library name)
         }
 
         namespace {
-            extern struct resource_initializer {
+            struct resource_initializer {
                 resource_initializer() {
                     load_resources();
                 }
@@ -187,6 +193,7 @@ function(cmrc_add_resource_library name)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib_tmp_cpp}" "${libcpp}"
         COMMENT "Generating ${name} resource loader"
         )
+    set_property(SOURCE ${libcpp} PROPERTY SKIP_AUTOMOC ON)
     # Generate the actual static library. Each source file is just a single file
     # with a character array compiled in containing the contents of the
     # corresponding resource file.
@@ -194,7 +201,27 @@ function(cmrc_add_resource_library name)
     set_property(TARGET ${name} PROPERTY CMRC_LIBDIR "${libdir}")
     target_link_libraries(${name} PUBLIC cmrc::base)
     set_property(TARGET ${name} PROPERTY CMRC_IS_RESOURCE_LIBRARY TRUE)
-    cmrc_add_resources(${name} ${ARGN})
+    cmrc_add_resources(${name} ${ARG_UNPARSED_ARGUMENTS})
+
+    # Create interface lib to hold additional linker flags
+    # preventing linker to exclude non used objects that
+    # contain static initializers/resource loaders.
+    # The code below uses quite recent version of CMake
+    # (nightly build as of time of this writing) to support
+    # automatic resource library loading.
+    # If you can't afford CMake upgrade, you can always fallback
+    # to the manual loading way with calling CMRC_INIT from the code.
+    if (${ARG_AUTOLOAD})
+        cmake_policy(PUSH)
+        cmake_minimum_required(VERSION 3.12) #for LINKER:, SHELL:, and target_link_options syntax
+
+        target_link_options(${name} INTERFACE
+              "$<$<CXX_COMPILER_ID:Clang>:SHELL:LINKER:-force_load $<TARGET_LINKER_FILE:${name}>>"
+              "$<$<CXX_COMPILER_ID:GNU>:SHELL:LINKER:--whole-archive $<TARGET_LINKER_FILE:${name}> LINKER:--no-whole-archive>"
+              "$<$<CXX_COMPILER_ID:MSVC>:SHELL:LINKER:-WHOLEARCHIVE:$<TARGET_LINKER_FILE:${name}> -ignore:4099>")
+
+        cmake_policy(POP)
+    endif()
 endfunction()
 
 function(cmrc_add_resources name)
@@ -234,6 +261,7 @@ function(cmrc_add_resources name)
         # Generate the rule for the intermediate source file
         _cmrc_generate_intermediate_cpp(${libident} ${sym} "${abspath}" "${abs_input}")
         target_sources(${name} PRIVATE ${abspath})
+        set_property(SOURCE ${abspath} PROPERTY SKIP_AUTOMOC ON)
         set_property(TARGET ${name} APPEND PROPERTY CMRC_EXTERN_DECLS
             "// Pointers to ${input}"
             "extern const char* const ${sym}_begin\;"
@@ -254,7 +282,7 @@ function(_cmrc_generate_intermediate_cpp libname symbol outfile infile)
         # This is the file we will generate
         OUTPUT "${outfile}"
         # These are the primary files that affect the output
-        DEPENDS "${infile}" "${this_script}"
+        DEPENDS "${infile}" "${cmakerc_script}"
         COMMAND
             "${CMAKE_COMMAND}"
                 -D_CMRC_GENERATE_MODE=TRUE
@@ -262,7 +290,7 @@ function(_cmrc_generate_intermediate_cpp libname symbol outfile infile)
                 -DSYMBOL=${symbol}
                 "-DINPUT_FILE=${infile}"
                 "-DOUTPUT_FILE=${outfile}"
-                -P "${this_script}"
+                -P "${cmakerc_script}"
         COMMENT "Generating intermediate file for ${infile}"
     )
 endfunction()
