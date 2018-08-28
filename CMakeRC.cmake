@@ -51,63 +51,164 @@ set(hpp_content [==[
 #include <string>
 #include <map>
 #include <mutex>
+#include <deque>
+#include <type_traits>
+#include <cassert>
+#include <functional>
+#include <system_error>
 
-#define CMRC_INIT(libname) \
-    do { \
-        extern void cmrc_init_resources_##libname(); \
-        cmrc_init_resources_##libname(); \
-    } while (0)
+namespace cmrc { namespace detail { struct dummy; } }
+
+#define CMRC_DECLARE(libid) \
+    namespace cmrc { namespace detail { \
+    struct dummy; \
+    static_assert(std::is_same<dummy, ::cmrc::detail::dummy>::value, "CMRC_DECLARE() must only appear at the global namespace"); \
+    } } \
+    namespace cmrc { namespace libid { \
+    cmrc::embedded_filesystem get_filesystem(); \
+    } } static_assert(true, "")
 
 namespace cmrc {
 
-class resource {
+class file {
     const char* _begin = nullptr;
     const char* _end = nullptr;
+
 public:
     const char* begin() const { return _begin; }
     const char* end() const { return _end; }
 
-    resource() = default;
-    resource(const char* beg, const char* end) : _begin(beg), _end(end) {}
+    file() = default;
+    file(const char* beg, const char* end) : _begin(beg), _end(end) {}
 };
-
-using resource_table = std::map<std::string, resource>;
 
 namespace detail {
 
-inline resource_table& table_instance() {
-    static resource_table table;
-    return table;
+class directory;
+class file_data;
+
+class file_or_directory {
+    union _data_t {
+        class file_data* file_data;
+        class directory* directory;
+    } _data;
+    bool _is_file = true;
+
+public:
+    explicit file_or_directory(file_data& f) {
+        _data.file_data = &f;
+    }
+    explicit file_or_directory(directory& d) {
+        _data.directory = &d;
+        _is_file = false;
+    }
+    bool is_file() const noexcept {
+        return _is_file;
+    }
+    const directory& as_directory() const noexcept {
+        assert(!is_file());
+        return *_data.directory;
+    }
+    const file_data& as_file() const noexcept {
+        assert(is_file());
+        return *_data.file_data;
+    }
+};
+
+class file_data {
+public:
+    const char* begin_ptr;
+    const char* end_ptr;
+    file_data(const file_data&) = delete;
+    file_data(const char* b, const char* e) : begin_ptr(b), end_ptr(e) {}
+};
+
+inline std::pair<std::string, std::string> split_path(const std::string& path) {
+    auto first_sep = path.find("/");
+    if (first_sep == path.npos) {
+        return std::make_pair(path, "");
+    } else {
+        return std::make_pair(path.substr(0, first_sep), path.substr(first_sep));
+    }
 }
 
-inline std::mutex& table_instance_mutex() {
-    static std::mutex mut;
-    return mut;
-}
+class directory {
+    std::deque<file_data> _files;
+    std::deque<directory> _dirs;
+    std::map<std::string, file_or_directory> _index;
+public:
+    directory() = default;
+    directory(const directory&) = delete;
 
-// We restrict access to the resource table through a mutex so that multiple
-// threads can access it safely.
-template <typename Func>
-inline auto with_table(Func fn) -> decltype(fn(std::declval<resource_table&>())) {
-    std::lock_guard<std::mutex> lk{ table_instance_mutex() };
-    return fn(table_instance());
-}
+    directory& add_subdir(std::string name) & {
+        _dirs.emplace_back();
+        auto& back = _dirs.back();
+        _index.emplace(name, back);
+        return back;
+    }
 
-}
+    void add_file(std::string name, const char* begin, const char* end) & {
+        assert(_index.find(name) == _index.end());
+        _files.emplace_back(begin, end);
+        _index.emplace(name, _files.back());
+    }
 
-inline resource open(const char* fname) {
-    return detail::with_table([fname](const resource_table& table) {
-        auto iter = table.find(fname);
-        if (iter == table.end()) {
-            return resource {};
+    const file_or_directory* get(const std::string& path) const {
+        auto pair = split_path(path);
+        auto child = _index.find(pair.first);
+        if (child == _index.end()) {
+            return nullptr;
         }
-        return iter->second;
-    });
+        auto& entry  = child->second;
+        if (pair.second.empty()) {
+            // We're at the end of the path
+            return &entry;
+        }
+
+        if (entry.is_file()) {
+            // We can't traverse into a file. Stop.
+            return nullptr;
+        }
+        // Keep going down
+        return entry.as_directory().get(pair.second);
+    }
+};
+
+inline std::string normalize_path(std::string path) {
+    while (path.find("/") == 0) {
+        path.erase(path.begin());
+    }
+    while (path.rfind("/") == path.size() - 1) {
+        path.pop_back();
+    }
+    auto off = path.npos;
+    while ((off = path.find("//")) != path.npos) {
+        path.erase(path.begin() + off);
+    }
+    return path;
 }
 
-inline resource open(const std::string& fname) {
-    return open(fname.data());
-}
+} // detail
+
+class embedded_filesystem {
+    // Never-null:
+    const cmrc::detail::directory* _root;
+    const detail::file_or_directory* _get(std::string path) const {
+        path = detail::normalize_path(path);
+        return _root->get(path);
+    }
+public:
+    explicit embedded_filesystem(const cmrc::detail::directory& dir) : _root(&dir) {}
+
+    file open(std::string path) const {
+        auto entry_ptr = _get(path);
+        if (!entry_ptr || !entry_ptr->is_file()) {
+            throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
+        }
+        auto& dat = entry_ptr->as_file();
+        return file{dat.begin_ptr, dat.end_ptr};
+    }
+};
 
 }
 
@@ -132,53 +233,48 @@ set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
 function(cmrc_add_resource_library name)
+    set(args ALIAS)
+    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "${args}" "")
     # Generate the identifier for the resource library's namespace
     string(MAKE_C_IDENTIFIER "${name}" libident)
+    set(libname "${name}")
     # Generate a library with the compiled in character arrays.
-    set(cpp_content [=[
+    string(CONFIGURE [=[
         #include <cmrc/cmrc.hpp>
         #include <map>
 
-        namespace cmrc { namespace %{libident} {
+        namespace cmrc {
+        namespace @libident@ {
 
         namespace res_chars {
         // These are the files which are available in this resource library
-        $<JOIN:$<TARGET_PROPERTY:%{libname},CMRC_EXTERN_DECLS>,
+        $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_EXTERN_DECLS>,
         >
         }
 
-        inline void load_resources() {
-            // This initializes the list of resources and pointers to their data
-            static std::once_flag flag;
-            std::call_once(flag, [] {
-                cmrc::detail::with_table([](resource_table& table) {
-                    $<JOIN:$<TARGET_PROPERTY:%{libname},CMRC_TABLE_POPULATE>,
-                    >
-                });
-            });
-        }
-
         namespace {
-            extern struct resource_initializer {
-                resource_initializer() {
-                    load_resources();
-                }
-            } dummy;
+
+        cmrc::detail::directory& get_root_dir() {
+            static cmrc::detail::directory root_directory;
+            $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_MAKE_DIRS>,
+            >
+            $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_MAKE_FILES>,
+            >
+            return root_directory;
         }
 
-        }}
-
-        // The resource library initialization function. Intended to be called
-        // before anyone intends to use any of the resource defined by this
-        // resource library
-        extern void cmrc_init_resources_%{libident}() {
-            cmrc::%{libident}::load_resources();
         }
-    ]=])
+
+        cmrc::embedded_filesystem get_filesystem() {
+            static auto& root_dir = get_root_dir();
+            return cmrc::embedded_filesystem{root_dir};
+        }
+
+        } // @libident@
+        } // cmrc
+    ]=] cpp_content @ONLY)
     get_filename_component(libdir "${CMAKE_CURRENT_BINARY_DIR}/${name}" ABSOLUTE)
     get_filename_component(lib_tmp_cpp "${libdir}/lib_.cpp" ABSOLUTE)
-    string(REPLACE "%{libname}" "${name}" cpp_content "${cpp_content}")
-    string(REPLACE "%{libident}" "${libident}" cpp_content "${cpp_content}")
     string(REPLACE "\n        " "\n" cpp_content "${cpp_content}")
     file(GENERATE OUTPUT "${lib_tmp_cpp}" CONTENT "${cpp_content}")
     get_filename_component(libcpp "${libdir}/lib.cpp" ABSOLUTE)
@@ -194,7 +290,40 @@ function(cmrc_add_resource_library name)
     set_property(TARGET ${name} PROPERTY CMRC_LIBDIR "${libdir}")
     target_link_libraries(${name} PUBLIC cmrc::base)
     set_property(TARGET ${name} PROPERTY CMRC_IS_RESOURCE_LIBRARY TRUE)
-    cmrc_add_resources(${name} ${ARGN})
+    if(ARG_ALIAS)
+        add_library("${ARG_ALIAS}" ALIAS ${name})
+    endif()
+    cmrc_add_resources(${name} ${ARG_UNPARSED_ARGUMENTS})
+endfunction()
+
+function(_cmrc_register_dirs name dirpath)
+    if(dirpath STREQUAL "")
+        return()
+    endif()
+    # Skip this dir if we have already registered it
+    get_target_property(registered "${name}" _CMRC_REGISTERED_DIRS)
+    if(dirpath IN_LIST registered)
+        return()
+    endif()
+    # Register the parent directory first
+    get_filename_component(parent "${dirpath}" DIRECTORY)
+    if(NOT parent STREQUAL "")
+        _cmrc_register_dirs("${name}" "${parent}")
+    endif()
+    # Now generate the registration
+    set_property(TARGET "${name}" APPEND PROPERTY _CMRC_REGISTERED_DIRS "${dirpath}")
+    _cm_encode_fpath(sym "${dirpath}")
+    if(parent STREQUAL "")
+        set(parent_sym root_directory)
+    else()
+        _cm_encode_fpath(parent_sym "${parent}")
+    endif()
+    get_filename_component(leaf "${dirpath}" NAME)
+    set_property(
+        TARGET "${name}"
+        APPEND PROPERTY CMRC_MAKE_DIRS
+        "static auto& ${sym} = ${parent_sym}.add_subdir(\"${leaf}\")\;"
+        )
 endfunction()
 
 function(cmrc_add_resources name)
@@ -217,34 +346,50 @@ function(cmrc_add_resources name)
     string(MAKE_C_IDENTIFIER "${name}" libident)
 
     get_target_property(libdir ${name} CMRC_LIBDIR)
+    get_target_property(target_dir ${name} SOURCE_DIR)
+    file(RELATIVE_PATH reldir "${target_dir}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(reldir MATCHES "^\\.\\.")
+        message(SEND_ERROR "Cannot call cmrc_add_resources in a parent directory from the resource library target")
+        return()
+    endif()
 
     foreach(input IN LISTS ARG_UNPARSED_ARGUMENTS)
-        get_filename_component(abs_input "${input}" ABSOLUTE)
+        get_filename_component(abs_in "${input}" ABSOLUTE)
         # Generate a filename based on the input filename that we can put in
         # the intermediate directory.
-        file(RELATIVE_PATH relpath "${ARG_WHENCE}" "${abs_input}")
+        file(RELATIVE_PATH relpath "${ARG_WHENCE}" "${abs_in}")
         if(relpath MATCHES "^\\.\\.")
             # For now we just error on files that exist outside of the soure dir.
             message(SEND_ERROR "Cannot add file '${input}': File must be in a subdirectory of ${ARG_WHENCE}")
             continue()
         endif()
-        get_filename_component(abspath "${libdir}/intermediate/${relpath}.cpp" ABSOLUTE)
+        if(ARG_PREFIX AND NOT ARG_PREFIX MATCHES "/$")
+            set(ARG_PREFIX "${ARG_PREFIX}/")
+        endif()
+        get_filename_component(dirpath "${ARG_PREFIX}${relpath}" DIRECTORY)
+        _cmrc_register_dirs("${name}" "${dirpath}")
+        get_filename_component(abs_out "${libdir}/intermediate/${relpath}.cpp" ABSOLUTE)
         # Generate a symbol name relpath the file's character array
         _cm_encode_fpath(sym "${relpath}")
+        # Get the symbol name for the parent directory
+        if(dirpath STREQUAL "")
+            set(parent_sym root_directory)
+        else()
+            _cm_encode_fpath(parent_sym "${dirpath}")
+        endif()
         # Generate the rule for the intermediate source file
-        _cmrc_generate_intermediate_cpp(${libident} ${sym} "${abspath}" "${abs_input}")
-        target_sources(${name} PRIVATE ${abspath})
+        _cmrc_generate_intermediate_cpp(${libident} ${sym} "${abs_out}" "${abs_in}")
+        target_sources(${name} PRIVATE "${abs_out}")
         set_property(TARGET ${name} APPEND PROPERTY CMRC_EXTERN_DECLS
             "// Pointers to ${input}"
             "extern const char* const ${sym}_begin\;"
             "extern const char* const ${sym}_end\;"
             )
-        if(ARG_PREFIX AND NOT ARG_PREFIX MATCHES "/$")
-            set(ARG_PREFIX "${ARG_PREFIX}/")
-        endif()
-        set_property(TARGET ${name} APPEND PROPERTY CMRC_TABLE_POPULATE
-            "// Table entry for ${input}"
-            "table.emplace(\"${ARG_PREFIX}${relpath}\", resource{res_chars::${sym}_begin, res_chars::${sym}_end})\;"
+        get_filename_component(leaf "${relpath}" NAME)
+        set_property(
+            TARGET ${name}
+            APPEND PROPERTY CMRC_MAKE_FILES
+            "${parent_sym}.add_file(\"${leaf}\", res_chars::${sym}_begin, res_chars::${sym}_end)\;"
             )
     endforeach()
 endfunction()

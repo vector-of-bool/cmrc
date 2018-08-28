@@ -1,18 +1,15 @@
 cmake_minimum_required(VERSION 3.6)
-project(CMRCExample)
+project(CMakeRC VERSION 1.0.0)
 
+list(INSERT CMAKE_MODULE_PATH 0 "${PROJECT_SOURCE_DIR}/cmake")
+
+# Include the main module
 include(CMakeRC.cmake)
 
-cmrc_add_resource_library(hello hello.txt)
-add_executable(main main.cpp)
-target_link_libraries(main PRIVATE hello)
-
-include(CTest)
-enable_testing()
-add_test(main main)
-set_property(TEST main PROPERTY PASS_REGULAR_EXPRESSION "Hello, world!")
-
-add_executable(flower flower.cpp)
-target_link_libraries(flower PRIVATE hello)
-add_test(flower flower ${CMAKE_CURRENT_SOURCE_DIR}/flower.jpg)
-cmrc_add_resources(hello flower.jpg)
+option(BUILD_TESTS "Build tests" ON)
+if(BUILD_TESTS AND (PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR))
+    include(CTest)
+    enable_testing()
+    add_compile_options(-Wall -Wextra)
+    add_subdirectory(tests)
+endif()
