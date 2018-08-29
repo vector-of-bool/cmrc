@@ -5,7 +5,7 @@
 #include <iostream>
 #include <iterator>
 
-CMRC_DECLARE(hello);
+CMRC_DECLARE(flower);
 
 int main(int argc, char** argv) {
     if (argc != 2) {
@@ -23,8 +23,7 @@ int main(int argc, char** argv) {
     const auto fs_size = std::distance(iter(flower_fs), iter());
     flower_fs.seekg(0);
 
-    // CMRC_INIT(hello);
-    auto       fs        = cmrc::hello::get_filesystem();
+    auto       fs        = cmrc::flower::get_filesystem();
     auto       flower_rc = fs.open("flower.jpg");
     const auto rc_size   = std::distance(flower_rc.begin(), flower_rc.end());
     if (rc_size != fs_size) {

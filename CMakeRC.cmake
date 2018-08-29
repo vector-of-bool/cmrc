@@ -20,7 +20,7 @@ if(_CMRC_GENERATE_MODE)
     endif()
     string(CONFIGURE [[
         namespace { const char file_array[] = { @chars@ }; }
-        namespace cmrc { namespace @LIBRARY@ { namespace res_chars {
+        namespace cmrc { namespace @NAMESPACE@ { namespace res_chars {
         extern const char* const @SYMBOL@_begin = file_array;
         extern const char* const @SYMBOL@_end = file_array + @n_bytes@;
         }}}
@@ -82,6 +82,8 @@ public:
     file(const char* beg, const char* end) : _begin(beg), _end(end) {}
 };
 
+class directory_entry;
+
 namespace detail {
 
 class directory;
@@ -104,6 +106,9 @@ public:
     }
     bool is_file() const noexcept {
         return _is_file;
+    }
+    bool is_directory() const noexcept {
+        return !is_file();
     }
     const directory& as_directory() const noexcept {
         assert(!is_file());
@@ -128,29 +133,38 @@ inline std::pair<std::string, std::string> split_path(const std::string& path) {
     if (first_sep == path.npos) {
         return std::make_pair(path, "");
     } else {
-        return std::make_pair(path.substr(0, first_sep), path.substr(first_sep));
+        return std::make_pair(path.substr(0, first_sep), path.substr(first_sep + 1));
     }
 }
+
+struct created_subdirectory {
+    class directory& directory;
+    class file_or_directory& index_entry;
+};
 
 class directory {
     std::deque<file_data> _files;
     std::deque<directory> _dirs;
     std::map<std::string, file_or_directory> _index;
+
+    using base_iterator = std::map<std::string, file_or_directory>::const_iterator;
+
 public:
+
     directory() = default;
     directory(const directory&) = delete;
 
-    directory& add_subdir(std::string name) & {
+    created_subdirectory add_subdir(std::string name) & {
         _dirs.emplace_back();
         auto& back = _dirs.back();
-        _index.emplace(name, back);
-        return back;
+        auto& fod = _index.emplace(name, back).first->second;
+        return created_subdirectory{back, fod};
     }
 
-    void add_file(std::string name, const char* begin, const char* end) & {
+    file_or_directory* add_file(std::string name, const char* begin, const char* end) & {
         assert(_index.find(name) == _index.end());
         _files.emplace_back(begin, end);
-        _index.emplace(name, _files.back());
+        return &_index.emplace(name, _files.back()).first->second;
     }
 
     const file_or_directory* get(const std::string& path) const {
@@ -172,6 +186,59 @@ public:
         // Keep going down
         return entry.as_directory().get(pair.second);
     }
+
+    class iterator {
+        base_iterator _base_iter;
+        base_iterator _end_iter;
+    public:
+        using value_type = directory_entry;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const value_type*;
+        using reference = const value_type&;
+        using iterator_category = std::input_iterator_tag;
+
+        iterator() = default;
+        explicit iterator(base_iterator iter, base_iterator end) : _base_iter(iter), _end_iter(end) {}
+
+        iterator begin() const noexcept {
+            return *this;
+        }
+
+        iterator end() const noexcept {
+            return iterator(_end_iter, _end_iter);
+        }
+
+        inline directory_entry operator*() const noexcept;
+
+        bool operator==(const iterator& rhs) const noexcept {
+            return _base_iter == rhs._base_iter;
+        }
+
+        bool operator!=(const iterator& rhs) const noexcept {
+            return !(*this == rhs);
+        }
+
+        iterator operator++() noexcept {
+            auto cp = *this;
+            ++_base_iter;
+            return cp;
+        }
+
+        iterator& operator++(int) noexcept {
+            ++_base_iter;
+            return *this;
+        }
+    };
+
+    using const_iterator = iterator;
+
+    iterator begin() const noexcept {
+        return iterator(_index.begin(), _index.end());
+    }
+
+    iterator end() const noexcept {
+        return iterator();
+    }
 };
 
 inline std::string normalize_path(std::string path) {
@@ -188,25 +255,91 @@ inline std::string normalize_path(std::string path) {
     return path;
 }
 
+using index_type = std::map<std::string, const cmrc::detail::file_or_directory*>;
+
 } // detail
+
+class directory_entry {
+    std::string _fname;
+    const detail::file_or_directory* _item;
+
+public:
+    directory_entry() = delete;
+    explicit directory_entry(std::string filename, const detail::file_or_directory& item)
+        : _fname(filename)
+        , _item(&item)
+    {}
+
+    const std::string& filename() const & {
+        return _fname;
+    }
+    std::string filename() const && {
+        return _fname;
+    }
+
+    bool is_file() const {
+        return _item->is_file();
+    }
+
+    bool is_directory() const {
+        return _item->is_directory();
+    }
+};
+
+directory_entry detail::directory::iterator::operator*() const noexcept {
+    assert(begin() != end());
+    return directory_entry(_base_iter->first, _base_iter->second);
+}
+
+using directory_iterator = detail::directory::iterator;
 
 class embedded_filesystem {
     // Never-null:
+    const cmrc::detail::index_type* _index;
     const cmrc::detail::directory* _root;
     const detail::file_or_directory* _get(std::string path) const {
         path = detail::normalize_path(path);
         return _root->get(path);
     }
-public:
-    explicit embedded_filesystem(const cmrc::detail::directory& dir) : _root(&dir) {}
 
-    file open(std::string path) const {
+public:
+    embedded_filesystem(const detail::index_type& index, const cmrc::detail::directory& dir)
+        : _index(&index)
+        , _root(&dir)
+    {}
+
+    file open(const std::string& path) const {
         auto entry_ptr = _get(path);
         if (!entry_ptr || !entry_ptr->is_file()) {
             throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
         }
         auto& dat = entry_ptr->as_file();
         return file{dat.begin_ptr, dat.end_ptr};
+    }
+
+    bool is_file(const std::string& path) const noexcept {
+        auto entry_ptr = _get(path);
+        return entry_ptr && entry_ptr->is_file();
+    }
+
+    bool is_directory(const std::string& path) const noexcept {
+        auto entry_ptr = _get(path);
+        return entry_ptr && entry_ptr->is_directory();
+    }
+
+    bool exists(const std::string& path) const noexcept {
+        return !!_get(path);
+    }
+
+    directory_iterator iterate_directory(const std::string& path) const {
+        auto entry_ptr = _get(path);
+        if (!entry_ptr) {
+            throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
+        }
+        if (!entry_ptr->is_directory()) {
+            throw std::system_error(make_error_code(std::errc::not_a_directory), path);
+        }
+        return entry_ptr->as_directory().begin();
     }
 };
 
@@ -233,15 +366,19 @@ set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
 function(cmrc_add_resource_library name)
-    set(args ALIAS)
+    set(args ALIAS NAMESPACE)
     cmake_parse_arguments(PARSE_ARGV 1 ARG "" "${args}" "")
     # Generate the identifier for the resource library's namespace
-    string(MAKE_C_IDENTIFIER "${name}" libident)
+    if(NOT ARG_NAMESPACE)
+        set(ARG_NAMESPACE "${name}")
+    endif()
+    string(MAKE_C_IDENTIFIER "${ARG_NAMESPACE}" libident)
     set(libname "${name}")
     # Generate a library with the compiled in character arrays.
     string(CONFIGURE [=[
         #include <cmrc/cmrc.hpp>
         #include <map>
+        #include <utility>
 
         namespace cmrc {
         namespace @libident@ {
@@ -254,20 +391,26 @@ function(cmrc_add_resource_library name)
 
         namespace {
 
-        cmrc::detail::directory& get_root_dir() {
-            static cmrc::detail::directory root_directory;
+        std::pair<const cmrc::detail::index_type*, const cmrc::detail::directory*>
+        get_root_dir() {
+            static cmrc::detail::directory root_directory_;
+            static cmrc::detail::index_type root_index;
+            struct dir_inl {
+                class cmrc::detail::directory& directory;
+            };
+            dir_inl root_directory_dir{root_directory_};
             $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_MAKE_DIRS>,
             >
             $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_MAKE_FILES>,
             >
-            return root_directory;
+            return std::make_pair(&root_index, &root_directory_);
         }
 
         }
 
         cmrc::embedded_filesystem get_filesystem() {
-            static auto& root_dir = get_root_dir();
-            return cmrc::embedded_filesystem{root_dir};
+            static auto pair = get_root_dir();
+            return cmrc::embedded_filesystem{*pair.first, *pair.second};
         }
 
         } // @libident@
@@ -288,6 +431,7 @@ function(cmrc_add_resource_library name)
     # corresponding resource file.
     add_library(${name} STATIC ${libcpp})
     set_property(TARGET ${name} PROPERTY CMRC_LIBDIR "${libdir}")
+    set_property(TARGET ${name} PROPERTY CMRC_NAMESPACE "${ARG_NAMESPACE}")
     target_link_libraries(${name} PUBLIC cmrc::base)
     set_property(TARGET ${name} PROPERTY CMRC_IS_RESOURCE_LIBRARY TRUE)
     if(ARG_ALIAS)
@@ -322,7 +466,8 @@ function(_cmrc_register_dirs name dirpath)
     set_property(
         TARGET "${name}"
         APPEND PROPERTY CMRC_MAKE_DIRS
-        "static auto& ${sym} = ${parent_sym}.add_subdir(\"${leaf}\")\;"
+        "static auto ${sym}_dir = ${parent_sym}_dir.directory.add_subdir(\"${leaf}\")\;"
+        "root_index.emplace(\"${dirpath}\", &${sym}_dir.index_entry)\;"
         )
 endfunction()
 
@@ -341,9 +486,11 @@ function(cmrc_add_resources name)
     if(NOT ARG_WHENCE)
         set(ARG_WHENCE ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
+    get_filename_component(ARG_WHENCE "${ARG_WHENCE}" ABSOLUTE)
 
     # Generate the identifier for the resource library's namespace
-    string(MAKE_C_IDENTIFIER "${name}" libident)
+    get_target_property(lib_ns "${name}" CMRC_NAMESPACE)
+    string(MAKE_C_IDENTIFIER "${lib_ns}" lib_ns)
 
     get_target_property(libdir ${name} CMRC_LIBDIR)
     get_target_property(target_dir ${name} SOURCE_DIR)
@@ -378,7 +525,7 @@ function(cmrc_add_resources name)
             _cm_encode_fpath(parent_sym "${dirpath}")
         endif()
         # Generate the rule for the intermediate source file
-        _cmrc_generate_intermediate_cpp(${libident} ${sym} "${abs_out}" "${abs_in}")
+        _cmrc_generate_intermediate_cpp(${lib_ns} ${sym} "${abs_out}" "${abs_in}")
         target_sources(${name} PRIVATE "${abs_out}")
         set_property(TARGET ${name} APPEND PROPERTY CMRC_EXTERN_DECLS
             "// Pointers to ${input}"
@@ -389,12 +536,19 @@ function(cmrc_add_resources name)
         set_property(
             TARGET ${name}
             APPEND PROPERTY CMRC_MAKE_FILES
-            "${parent_sym}.add_file(\"${leaf}\", res_chars::${sym}_begin, res_chars::${sym}_end)\;"
+            "root_index.emplace("
+            "    \"${relpath}\","
+            "    ${parent_sym}_dir.directory.add_file("
+            "        \"${leaf}\","
+            "        res_chars::${sym}_begin,"
+            "        res_chars::${sym}_end"
+            "    )"
+            ")\;"
             )
     endforeach()
 endfunction()
 
-function(_cmrc_generate_intermediate_cpp libname symbol outfile infile)
+function(_cmrc_generate_intermediate_cpp lib_ns symbol outfile infile)
     add_custom_command(
         # This is the file we will generate
         OUTPUT "${outfile}"
@@ -403,7 +557,7 @@ function(_cmrc_generate_intermediate_cpp libname symbol outfile infile)
         COMMAND
             "${CMAKE_COMMAND}"
                 -D_CMRC_GENERATE_MODE=TRUE
-                -DLIBRARY=${libname}
+                -DNAMESPACE=${lib_ns}
                 -DSYMBOL=${symbol}
                 "-DINPUT_FILE=${infile}"
                 "-DOUTPUT_FILE=${outfile}"
