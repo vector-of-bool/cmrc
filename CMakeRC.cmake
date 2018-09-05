@@ -42,7 +42,7 @@ if(COMMAND cmrc_add_resource_library)
     return()
 endif()
 
-set(this_script "${CMAKE_CURRENT_LIST_FILE}")
+set(_CMRC_SCRIPT "${CMAKE_CURRENT_LIST_FILE}" CACHE INTERNAL "Path to CMakeRC script")
 
 # CMakeRC uses std::call_once().
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -566,7 +566,7 @@ function(_cmrc_generate_intermediate_cpp lib_ns symbol outfile infile)
         # This is the file we will generate
         OUTPUT "${outfile}"
         # These are the primary files that affect the output
-        DEPENDS "${infile}" "${this_script}"
+        DEPENDS "${infile}" "${_CMRC_SCRIPT}"
         COMMAND
             "${CMAKE_COMMAND}"
                 -D_CMRC_GENERATE_MODE=TRUE
@@ -574,7 +574,7 @@ function(_cmrc_generate_intermediate_cpp lib_ns symbol outfile infile)
                 -DSYMBOL=${symbol}
                 "-DINPUT_FILE=${infile}"
                 "-DOUTPUT_FILE=${outfile}"
-                -P "${this_script}"
+                -P "${_CMRC_SCRIPT}"
         COMMENT "Generating intermediate file for ${infile}"
     )
 endfunction()
