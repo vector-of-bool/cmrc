@@ -68,7 +68,7 @@ set(hpp_content [==[
 #include <string>
 #include <map>
 #include <mutex>
-#include <deque>
+#include <list>
 #include <type_traits>
 #include <cassert>
 #include <functional>
@@ -94,6 +94,7 @@ class file {
 public:
     const char* begin() const { return _begin; }
     const char* end() const { return _end; }
+    size_t size() const { return _end - _begin; }
 
     file() = default;
     file(const char* beg, const char* end) : _begin(beg), _end(end) {}
@@ -160,8 +161,8 @@ struct created_subdirectory {
 };
 
 class directory {
-    std::deque<file_data> _files;
-    std::deque<directory> _dirs;
+    std::list<file_data> _files;
+    std::list<directory> _dirs;
     std::map<std::string, file_or_directory> _index;
 
     using base_iterator = std::map<std::string, file_or_directory>::const_iterator;
@@ -328,7 +329,9 @@ public:
     embedded_filesystem(const detail::index_type& index, const cmrc::detail::directory& dir)
         : _index(&index)
         , _root(&dir)
-    {}
+    {
+      (void)_root;
+    }
 
     file open(const std::string& path) const {
         auto entry_ptr = _get(path);
