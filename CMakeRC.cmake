@@ -1,3 +1,5 @@
+# This block is executed when generating an intermediate resource file, not when
+# running in CMake configure mode
 if(_CMRC_GENERATE_MODE)
     # Read in the digits
     file(READ "${INPUT_FILE}" bytes HEX)
@@ -26,6 +28,7 @@ if(_CMRC_GENERATE_MODE)
         }}}
     ]] code)
     file(WRITE "${OUTPUT_FILE}" "${code}")
+    # Exit from the script. Nothing else needs to be processed
     return()
 endif()
 
@@ -44,9 +47,15 @@ endif()
 
 set(_CMRC_SCRIPT "${CMAKE_CURRENT_LIST_FILE}" CACHE INTERNAL "Path to CMakeRC script")
 
-# CMakeRC uses std::call_once().
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
+function(_cmrc_normalize_path var)
+    set(path "${${var}}")
+    file(TO_CMAKE_PATH "${path}" path)
+    while(path MATCHES "//")
+        string(REPLACE "//" "/" path "${path}")
+    endwhile()
+    string(REGEX REPLACE "/+$" "" path "${path}")
+    set("${var}" "${path}" PARENT_SCOPE)
+endfunction()
 
 get_filename_component(_inc_dir "${CMAKE_BINARY_DIR}/_cmrc/include" ABSOLUTE)
 set(CMRC_INCLUDE_DIR "${_inc_dir}" CACHE INTERNAL "Directory for CMakeRC include files")
@@ -374,7 +383,6 @@ file(GENERATE OUTPUT "${cmrc_hpp}" CONTENT "${hpp_content}" CONDITION ${_generat
 add_library(cmrc-base INTERFACE)
 target_include_directories(cmrc-base INTERFACE "${CMRC_INCLUDE_DIR}")
 target_compile_features(cmrc-base INTERFACE cxx_nullptr)
-target_link_libraries(cmrc-base INTERFACE Threads::Threads)
 set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
@@ -499,6 +507,7 @@ function(cmrc_add_resources name)
     if(NOT ARG_WHENCE)
         set(ARG_WHENCE ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
+    _cmrc_normalize_path(ARG_WHENCE)
     get_filename_component(ARG_WHENCE "${ARG_WHENCE}" ABSOLUTE)
 
     # Generate the identifier for the resource library's namespace
@@ -514,6 +523,7 @@ function(cmrc_add_resources name)
     endif()
 
     foreach(input IN LISTS ARG_UNPARSED_ARGUMENTS)
+        _cmrc_normalize_path(input)
         get_filename_component(abs_in "${input}" ABSOLUTE)
         # Generate a filename based on the input filename that we can put in
         # the intermediate directory.
@@ -522,6 +532,9 @@ function(cmrc_add_resources name)
             # For now we just error on files that exist outside of the soure dir.
             message(SEND_ERROR "Cannot add file '${input}': File must be in a subdirectory of ${ARG_WHENCE}")
             continue()
+        endif()
+        if(DEFINED ARG_PREFIX)
+            _cmrc_normalize_path(ARG_PREFIX)
         endif()
         if(ARG_PREFIX AND NOT ARG_PREFIX MATCHES "/$")
             set(ARG_PREFIX "${ARG_PREFIX}/")
