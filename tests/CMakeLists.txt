@@ -1,5 +1,5 @@
 function(cmrc_add_test)
-    set(options)
+    set(options WILL_FAIL)
     set(args NAME PASS_REGEX WHENCE PREFIX)
     set(list_args RESOURCES TEST_ARGV)
     cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${args}" "${list_args}")
@@ -24,6 +24,7 @@ function(cmrc_add_test)
     if(ARG_UNPARSED_ARGUMENTS)
         message(WARNING "Invalid test arguments: ${ARG_UNPARSED_ARGUMENTS}")
     endif()
+    set_property(TEST "${ARG_NAME}" PROPERTY WILL_FAIL "${ARG_WILL_FAIL}")
 endfunction()
 
 cmrc_add_test(
@@ -71,4 +72,9 @@ cmrc_add_test(
     RESOURCES
         subdir_a/subdir_b/file_a.txt
         subdir_a/subdir_b/file_b.txt
+    )
+
+cmrc_add_test(
+    NAME enoent
+    WILL_FAIL
     )
