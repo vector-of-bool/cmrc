@@ -4,10 +4,10 @@ function(cmrc_add_test)
     set(list_args RESOURCES TEST_ARGV)
     cmake_parse_arguments(PARSE_ARGV 0 ARG "${options}" "${args}" "${list_args}")
 
-    if(ARG_WHENCE)
+    if(DEFINED ARG_WHENCE)
         set(whence_arg WHENCE "${ARG_WHENCE}")
     endif()
-    if(ARG_PREFIX)
+    if(DEFINED ARG_PREFIX)
         set(prefix_arg PREFIX "${ARG_PREFIX}")
     endif()
 
@@ -15,14 +15,14 @@ function(cmrc_add_test)
     cmrc_add_resource_library(rc_${ARG_NAME} NAMESPACE "${ARG_NAME}" ${whence_arg} ${prefix_arg} ${ARG_RESOURCES})
     target_link_libraries("${ARG_NAME}" PRIVATE rc_${ARG_NAME})
     add_test("${ARG_NAME}" "${ARG_NAME}" ${ARG_TEST_ARGV})
-    if(ARG_PASS_REGEX)
+    if(DEFINED ARG_PASS_REGEX)
         set_property(
             TEST "${ARG_NAME}"
             PROPERTY PASS_REGULAR_EXPRESSION "${ARG_PASS_REGEX}"
             )
     endif()
     if(ARG_UNPARSED_ARGUMENTS)
-        message(FATAL_ERROR "Invalid test arguments: ${ARG_UNPARSED_ARGUMENTS}")
+        message(WARNING "Invalid test arguments: ${ARG_UNPARSED_ARGUMENTS}")
     endif()
 endfunction()
 
