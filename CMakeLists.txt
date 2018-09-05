@@ -8,7 +8,6 @@ include(CMakeRC.cmake)
 
 option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS AND (PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR))
-    include(CTest)
     enable_testing()
     if(NOT MSVC)
         add_compile_options(-Wall -Wextra)
