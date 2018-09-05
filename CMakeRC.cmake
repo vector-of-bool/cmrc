@@ -299,7 +299,12 @@ class embedded_filesystem {
     const cmrc::detail::directory* _root;
     const detail::file_or_directory* _get(std::string path) const {
         path = detail::normalize_path(path);
-        return _root->get(path);
+        auto found = _index->find(path);
+        if (found == _index->end()) {
+            return nullptr;
+        } else {
+            return found->second;
+        }
     }
 
 public:
@@ -537,7 +542,7 @@ function(cmrc_add_resources name)
             TARGET ${name}
             APPEND PROPERTY CMRC_MAKE_FILES
             "root_index.emplace("
-            "    \"${relpath}\","
+            "    \"${ARG_PREFIX}${relpath}\","
             "    ${parent_sym}_dir.directory.add_file("
             "        \"${leaf}\","
             "        res_chars::${sym}_begin,"
