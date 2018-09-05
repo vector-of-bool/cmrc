@@ -29,6 +29,14 @@ if(_CMRC_GENERATE_MODE)
     return()
 endif()
 
+set(_version 2.0.0)
+if(DEFINED _CMRC_VERSION)
+    if(NOT (_version STREQUAL _CMRC_VERSION))
+        message(WARNING "More than one CMakeRC version has been included in this project.")
+    endif()
+endif()
+set(_CMRC_VERSION "${_version}" CACHE INTERNAL "CMakeRC version. Used for checking for conflicts")
+
 if(COMMAND cmrc_add_resource_library)
     # CMakeRC has already been included! Don't do anything
     return()
