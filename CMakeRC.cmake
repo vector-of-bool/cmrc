@@ -416,7 +416,7 @@ function(cmrc_add_resource_library name)
         } // @libident@
         } // cmrc
     ]=] cpp_content @ONLY)
-    get_filename_component(libdir "${CMAKE_CURRENT_BINARY_DIR}/${name}" ABSOLUTE)
+    get_filename_component(libdir "${CMAKE_CURRENT_BINARY_DIR}/__cmrc_${name}" ABSOLUTE)
     get_filename_component(lib_tmp_cpp "${libdir}/lib_.cpp" ABSOLUTE)
     string(REPLACE "\n        " "\n" cpp_content "${cpp_content}")
     file(GENERATE OUTPUT "${lib_tmp_cpp}" CONTENT "${cpp_content}")
