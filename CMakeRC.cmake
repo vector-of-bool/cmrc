@@ -33,17 +33,16 @@ if(_CMRC_GENERATE_MODE)
 endif()
 
 set(_version 2.0.0)
-if(DEFINED _CMRC_VERSION)
-    if(NOT (_version STREQUAL _CMRC_VERSION))
-        message(WARNING "More than one CMakeRC version has been included in this project.")
-    endif()
-endif()
-set(_CMRC_VERSION "${_version}" CACHE INTERNAL "CMakeRC version. Used for checking for conflicts")
 
 if(COMMAND cmrc_add_resource_library)
+    if(NOT DEFINED _CMRC_VERSION OR NOT (_version STREQUAL _CMRC_VERSION))
+        message(WARNING "More than one CMakeRC version has been included in this project.")
+    endif()
     # CMakeRC has already been included! Don't do anything
     return()
 endif()
+
+set(_CMRC_VERSION "${_version}" CACHE INTERNAL "CMakeRC version. Used for checking for conflicts")
 
 set(_CMRC_SCRIPT "${CMAKE_CURRENT_LIST_FILE}" CACHE INTERNAL "Path to CMakeRC script")
 
