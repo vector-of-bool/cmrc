@@ -34,6 +34,10 @@ endif()
 
 set(_version 2.0.0)
 
+# Minimum version for cmake_parse_arguments
+cmake_minimum_required(VERSION 3.3)
+include(CMakeParseArguments)
+
 if(COMMAND cmrc_add_resource_library)
     if(NOT DEFINED _CMRC_VERSION OR NOT (_version STREQUAL _CMRC_VERSION))
         message(WARNING "More than one CMakeRC version has been included in this project.")
@@ -381,13 +385,14 @@ file(GENERATE OUTPUT "${cmrc_hpp}" CONTENT "${hpp_content}" CONDITION ${_generat
 
 add_library(cmrc-base INTERFACE)
 target_include_directories(cmrc-base INTERFACE "${CMRC_INCLUDE_DIR}")
+# Signal a basic C++11 feature to require C++11.
 target_compile_features(cmrc-base INTERFACE cxx_nullptr)
 set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
 function(cmrc_add_resource_library name)
     set(args ALIAS NAMESPACE)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "${args}" "")
+    cmake_parse_arguments(ARG "" "${args}" "" "${ARGN}")
     # Generate the identifier for the resource library's namespace
     if(NOT ARG_NAMESPACE)
         set(ARG_NAMESPACE "${name}")
@@ -501,7 +506,7 @@ function(cmrc_add_resources name)
     set(options)
     set(args WHENCE PREFIX)
     set(list_args)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "${options}" "${args}" "${list_args}")
+    cmake_parse_arguments(ARG "${options}" "${args}" "${list_args}" "${ARGN}")
 
     if(NOT ARG_WHENCE)
         set(ARG_WHENCE ${CMAKE_CURRENT_SOURCE_DIR})
