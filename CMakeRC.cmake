@@ -33,17 +33,19 @@ if(_CMRC_GENERATE_MODE)
 endif()
 
 set(_version 2.0.0)
-if(DEFINED _CMRC_VERSION)
-    if(NOT (_version STREQUAL _CMRC_VERSION))
-        message(WARNING "More than one CMakeRC version has been included in this project.")
-    endif()
-endif()
-set(_CMRC_VERSION "${_version}" CACHE INTERNAL "CMakeRC version. Used for checking for conflicts")
+
+cmake_minimum_required(VERSION 3.3)
+include(CMakeParseArguments)
 
 if(COMMAND cmrc_add_resource_library)
+    if(NOT DEFINED _CMRC_VERSION OR NOT (_version STREQUAL _CMRC_VERSION))
+        message(WARNING "More than one CMakeRC version has been included in this project.")
+    endif()
     # CMakeRC has already been included! Don't do anything
     return()
 endif()
+
+set(_CMRC_VERSION "${_version}" CACHE INTERNAL "CMakeRC version. Used for checking for conflicts")
 
 set(_CMRC_SCRIPT "${CMAKE_CURRENT_LIST_FILE}" CACHE INTERNAL "Path to CMakeRC script")
 
@@ -92,12 +94,16 @@ class file {
     const char* _end = nullptr;
 
 public:
-    const char* begin() const { return _begin; }
-    const char* end() const { return _end; }
-    size_t size() const { return _end - _begin; }
+    using iterator = const char*;
+    using const_iterator = iterator;
+    iterator begin() const noexcept { return _begin; }
+    iterator cbegin() const noexcept { return _begin; }
+    iterator end() const noexcept { return _end; }
+    iterator cend() const noexcept { return _end; }
+    std::size_t size() const { return std::difference(begin(), end()); }
 
     file() = default;
-    file(const char* beg, const char* end) : _begin(beg), _end(end) {}
+    file(iterator beg, iterator end) noexcept : _begin(beg), _end(end) {}
 };
 
 class directory_entry;
@@ -226,7 +232,7 @@ public:
             return iterator(_end_iter, _end_iter);
         }
 
-        inline directory_entry operator*() const noexcept;
+        inline value_type operator*() const noexcept;
 
         bool operator==(const iterator& rhs) const noexcept {
             return _base_iter == rhs._base_iter;
@@ -292,7 +298,7 @@ public:
         return _fname;
     }
     std::string filename() const && {
-        return _fname;
+        return std::move(_fname);
     }
 
     bool is_file() const {
@@ -385,18 +391,27 @@ file(GENERATE OUTPUT "${cmrc_hpp}" CONTENT "${hpp_content}" CONDITION ${_generat
 
 add_library(cmrc-base INTERFACE)
 target_include_directories(cmrc-base INTERFACE "${CMRC_INCLUDE_DIR}")
+# Signal a basic C++11 feature to require C++11.
 target_compile_features(cmrc-base INTERFACE cxx_nullptr)
 set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
 function(cmrc_add_resource_library name)
     set(args ALIAS NAMESPACE)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "${args}" "")
+    cmake_parse_arguments(ARG "" "${args}" "" "${ARGN}")
     # Generate the identifier for the resource library's namespace
-    if(NOT ARG_NAMESPACE)
+    set(ns_re "[a-zA-Z_][a-zA-Z0-9_]*")
+    if(NOT DEFINED ARG_NAMESPACE)
+        # Check that the library name is also a valid namespace
+        if(NOT name MATCHES "${ns_re}")
+            message(SEND_ERROR "Library name is not a valid namespace. Specify the NAMESPACE argument")
+        endif()
         set(ARG_NAMESPACE "${name}")
+    else()
+        if(NOT ARG_NAMESPACE MATCHES "${ns_re}")
+            message(SEND_ERROR "NAMESPACE for ${name} is not a valid C++ namespace identifier (${ARG_NAMESPACE})")
+        endif()
     endif()
-    string(MAKE_C_IDENTIFIER "${ARG_NAMESPACE}" libident)
     set(libname "${name}")
     # Generate a library with the compiled in character arrays.
     string(CONFIGURE [=[
@@ -405,7 +420,7 @@ function(cmrc_add_resource_library name)
         #include <utility>
 
         namespace cmrc {
-        namespace @libident@ {
+        namespace @ARG_NAMESPACE@ {
 
         namespace res_chars {
         // These are the files which are available in this resource library
@@ -437,7 +452,7 @@ function(cmrc_add_resource_library name)
             return cmrc::embedded_filesystem{*pair.first, *pair.second};
         }
 
-        } // @libident@
+        } // @ARG_NAMESPACE@
         } // cmrc
     ]=] cpp_content @ONLY)
     get_filename_component(libdir "${CMAKE_CURRENT_BINARY_DIR}/__cmrc_${name}" ABSOLUTE)
@@ -505,7 +520,7 @@ function(cmrc_add_resources name)
     set(options)
     set(args WHENCE PREFIX)
     set(list_args)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "${options}" "${args}" "${list_args}")
+    cmake_parse_arguments(ARG "${options}" "${args}" "${list_args}" "${ARGN}")
 
     if(NOT ARG_WHENCE)
         set(ARG_WHENCE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -515,7 +530,6 @@ function(cmrc_add_resources name)
 
     # Generate the identifier for the resource library's namespace
     get_target_property(lib_ns "${name}" CMRC_NAMESPACE)
-    string(MAKE_C_IDENTIFIER "${lib_ns}" lib_ns)
 
     get_target_property(libdir ${name} CMRC_LIBDIR)
     get_target_property(target_dir ${name} SOURCE_DIR)
