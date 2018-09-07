@@ -94,11 +94,15 @@ class file {
     const char* _end = nullptr;
 
 public:
-    const char* begin() const { return _begin; }
-    const char* end() const { return _end; }
+    using iterator = const char*;
+    using const_iterator = iterator;
+    iterator begin() const noexcept { return _begin; }
+    iterator cbegin() const noexcept { return _begin; }
+    iterator end() const noexcept { return _end; }
+    iterator cend() const noexcept { return _end; }
 
     file() = default;
-    file(const char* beg, const char* end) : _begin(beg), _end(end) {}
+    file(iterator beg, iterator end) noexcept : _begin(beg), _end(end) {}
 };
 
 class directory_entry;
@@ -227,7 +231,7 @@ public:
             return iterator(_end_iter, _end_iter);
         }
 
-        inline directory_entry operator*() const noexcept;
+        inline value_type operator*() const noexcept;
 
         bool operator==(const iterator& rhs) const noexcept {
             return _base_iter == rhs._base_iter;
@@ -293,7 +297,7 @@ public:
         return _fname;
     }
     std::string filename() const && {
-        return _fname;
+        return std::move(_fname);
     }
 
     bool is_file() const {
