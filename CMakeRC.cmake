@@ -34,7 +34,6 @@ endif()
 
 set(_version 2.0.0)
 
-# Minimum version for cmake_parse_arguments
 cmake_minimum_required(VERSION 3.3)
 include(CMakeParseArguments)
 
