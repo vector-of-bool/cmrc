@@ -393,10 +393,18 @@ function(cmrc_add_resource_library name)
     set(args ALIAS NAMESPACE)
     cmake_parse_arguments(ARG "" "${args}" "" "${ARGN}")
     # Generate the identifier for the resource library's namespace
-    if(NOT ARG_NAMESPACE)
+    set(ns_re "[a-zA-Z_][a-zA-Z0-9_]*")
+    if(NOT DEFINED ARG_NAMESPACE)
+        # Check that the library name is also a valid namespace
+        if(NOT name MATCHES "${ns_re}")
+            message(SEND_ERROR "Library name is not a valid namespace. Specify the NAMESPACE argument")
+        endif()
         set(ARG_NAMESPACE "${name}")
+    else()
+        if(NOT ARG_NAMESPACE MATCHES "${ns_re}")
+            message(SEND_ERROR "NAMESPACE for ${name} is not a valid C++ namespace identifier (${ARG_NAMESPACE})")
+        endif()
     endif()
-    string(MAKE_C_IDENTIFIER "${ARG_NAMESPACE}" libident)
     set(libname "${name}")
     # Generate a library with the compiled in character arrays.
     string(CONFIGURE [=[
@@ -405,7 +413,7 @@ function(cmrc_add_resource_library name)
         #include <utility>
 
         namespace cmrc {
-        namespace @libident@ {
+        namespace @ARG_NAMESPACE@ {
 
         namespace res_chars {
         // These are the files which are available in this resource library
@@ -437,7 +445,7 @@ function(cmrc_add_resource_library name)
             return cmrc::embedded_filesystem{*pair.first, *pair.second};
         }
 
-        } // @libident@
+        } // @ARG_NAMESPACE@
         } // cmrc
     ]=] cpp_content @ONLY)
     get_filename_component(libdir "${CMAKE_CURRENT_BINARY_DIR}/__cmrc_${name}" ABSOLUTE)
@@ -515,7 +523,6 @@ function(cmrc_add_resources name)
 
     # Generate the identifier for the resource library's namespace
     get_target_property(lib_ns "${name}" CMRC_NAMESPACE)
-    string(MAKE_C_IDENTIFIER "${lib_ns}" lib_ns)
 
     get_target_property(libdir ${name} CMRC_LIBDIR)
     get_target_property(target_dir ${name} SOURCE_DIR)
