@@ -1,42 +1,87 @@
-# CMakeRC - A CMake-Based Resource Compiler
+# CMakeRC - A Standalone CMake-Based C++ Resource Compiler
 
-This projects provides a single CMake module, `CMakeRC.cmake` which can be used
-to add compile arbitrary files into binaries, and then load and read from them
-at runtime. [Learn more here.](https://vector-of-bool.github.io/2017/01/21/cmrc.html)
+CMakeRC is a resource compiler provided in a single CMake script that can easily
+be included in another project.
+
+## What is a "Resource Compiler"?
+
+For the purpose of this project, a _resource compiler_ is a tool that will
+compile arbitrary data into a program. The program can then read this data from
+without needing to store that data on disk external to the program.
+
+Examples use cases:
+
+- Storing a web page tree for serving over HTTP to clients. Compiling the web
+  page into the executable means that the program is all that is required to run
+  the HTTP server, without keeping the site files on disk separately.
+- Storing embedded scripts and/or shaders that support the program, rather than
+  writing them in the code as string literals.
+- Storing images and graphics for GUIs.
+
+These things are all about aiding in the ease of portability and distribution of
+the program, as it is no longer required to ship a plethora of support files
+with a binary to your users.
+
+## What is Special About CMakeRC?
+
+CMakeRC is implemented as a single CMake module, `CMakeRC.cmake`. No additional
+libraries or headers are required.
+
+This project was initially written as a "literate programming" experiment. [The process for the pre-2.0 version can be read about here](https://vector-of-bool.github.io/2017/01/21/cmrc.html).
+
+2.0.0+ is slightly different from what was written in the post, but a lot of it
+still applies.
 
 ## Installing
 
-Installing CMakeRC is meant to be as simple as possible. The only thing required
-is the `CMakeRC.cmake` script. You can copy it into your project directory or
-install it as a package and get all the features you need.
+Installing CMakeRC is designed to be as simple as possible. The only thing
+required is the `CMakeRC.cmake` script. You can copy it into your project
+directory (recommended) or install it as a package and get all the features you
+need.
 
 ## Usage
 
-1. Once installed, simply import the `CMakeRC.cmake` script. If you installed it
-   as a package, use `find_package(CMakeRC)`. If you placed the module in your
-   project directory, simply use `include(CMakeRC.cmake)` to import the module.
+1. Once installed, simply import the `CMakeRC.cmake` script. If you placed the
+   module in your project directory (recommended), simply use `include
+   (CMakeRC.cmake)` to import the module. If you installed it as a package, use
+   `find_package(CMakeRC)`.
 
 2. Once included, create a new resource library using `cmrc_add_resource_library`,
    like this:
 
    ```cmake
-   cmrc_add_resource_library(my-resources ...)
+   cmrc_add_resource_library(foo-resources ...)
    ```
 
    Where `...` is simply a list of files that you wish to compile into the
    resource library.
+
+  You can use the `ALIAS` argument to immediately generate an alias target for
+  the resource library (recommended):
+
+  ```cmake
+  `cmrc_add_resource_library`(foo-resources ALIAS foo::rc)
+  ```
+
+  **Note:** If the name of the library target is not a valid C++ `namespace`
+  identifier, you will need to provide the `NAMESPACE` argument. Otherwise, the
+  name of the library will be used as the resource library's namespace.
+
+  ```cmake
+  cmrc_add_resource_library(foo-resources ALIAS foo::rc NAMESPACE foo)
+  ```
 
 3. To use the resource library, link the resource library target into a binary
    using `target_link_libraries()`:
 
    ```cmake
    add_executable(my-program main.cpp)
-   target_link_libraries(my-program PRIVATE my-resources)
+   target_link_libraries(my-program PRIVATE foo::rc)
    ```
 
 4. Inside of the source files, any time you wish to use the library, include the
    `cmrc/cmrc.hpp` header, which will automatically become available to any
-   target that linkes to a generated resource library target, as `my-program`
+   target that links to a generated resource library target, as `my-program`
    does above:
 
    ```c++
@@ -47,21 +92,85 @@ install it as a package and get all the features you need.
    }
    ```
 
-4. Before reading any of the compiled-in resources, call `CMRC_INIT()` with the
-   identifier-ified name of the resource library. (The identifier-ified name is
-   the name with all non-alphanumeric characters convered to underscores):
+5. At global scope within the `.cpp` file, place the `CMRC_DECLARE(ns)` macro
+   using the namespace that was designated with `cmrc_add_resource_library` (or
+   the library name if no namespace was specified):
 
    ```c++
+   #include <cmrc/cmrc.hpp>
+
+   CMRC_DECLARE(foo);
+
    int main() {
-       CMRC_INIT(my_resources);
+       // ...
    }
    ```
 
-5. Call `cmrc::open()` with the path to any compiled-in resources, and you will
-   get an instance of `cmrc::resource` which exposes `begin()` and `end()`
-   functions for accessing the data using simple `char` pointers.
+6. Obtain a handle to the embedded resource filesystem by calling the
+   `get_embedded_filesystem()` function in the generated namespace. It will be
+   generated at `cmrc::<my-lib-ns>::get_embedded_filesystem()`.
 
-6. Profit!
+   ```c++
+   int main() {
+       auto fs = cmrc::foo::get_embedded_filesystem();
+   }
+   ```
+
+   (This function was declared by the `CMRC_DECLARE()` macro from the previous
+   step.)
+
+   You're now ready to work with the files in your resource library! See the
+   section on `embedded_filesystem`
+
+## The `cmrc::embedded_filesystem` API
+
+All resource libraries will their own `cmrc::embedded_filesystem`, which can be
+accessed with the `get_embedded_filesystem()` function declared by
+`CMRC_DECLARE()`.
+
+This class is trivially copyable and destructible, and acts as a handle to the
+statically allocated resource library data.
+
+### Methods on `cmrc::embedded_filesystem`
+
+- `open(const std::string& path) -> cmrc::file` - Opens and returns a
+  non-directory `file` object at `path`, or throws `std::system_error()` on
+  error.
+- `is_file(const std::string& path) -> bool` - Returns `true` if the given
+  `path` names a regular file, `false` otherwise.
+- `is_directory(const std::string& path) -> bool` - Returns `true` if the given
+  `path` names a directory. `false` otherwise.
+- `exists(const std::string& path) -> bool` returns `true` if the given path
+  names an existing file or directory, `false` otherwise.
+- `iterate_directory(const std::string& path) -> cmrc::directory_iterator`
+  returns a directory iterator for iterating the contents of a directory. Throws
+  if the given `path` does not identify a directory.
+
+## Members of `cmrc::file`
+
+- `typename iterator` and `typename const_iterator` - Just `const char*`.
+- `begin()/cbegin() -> iterator` - Return an iterator to the beginning of the
+  resource.
+- `end()/cend() -> iterator` - Return an iterator past the end of the resource.
+- `file()` - Default constructor, refers to no resource.
+
+## Members of `cmrc::directory_iterator`
+
+- `typename value_type` - `cmrc::directory_entry`
+- `iterator_category` - `std::input_iterator_tag`
+- `directory_iterator()` - Default construct.
+- `begin() -> directory_iterator` - Returns `*this`.
+- `end() -> directory_iterator` - Returns a past-the-end iterator corresponding
+  to this iterator.
+- `operator*() -> value_type` - Returns the `directory_entry` for which the
+  iterator corresponds.
+- `operator==`, `operator!=`, and `operator++` - Implement iterator semantics.
+
+## Members of `cmrc::directory_entry`
+
+- `filename() -> std::string` - The filename of the entry.
+- `is_file() -> bool` - `true` if the entry is a file.
+- `is_directory() -> bool` - `true` if the entry is a directory.
 
 ## Additional Options
 
@@ -99,18 +208,20 @@ content:
 
 ```cmake
 cmrc_add_resource_library(
-  flower-images
-  WHENCE images
-  PREFIX flowers
-  images/rose.jpg
-  images/tulip.jpg
-  images/daisy.jpg
-  images/sunflower.jpg
-)
+    flower-images
+    NAMESPACE flower
+    WHENCE images
+    PREFIX flowers
+    images/rose.jpg
+    images/tulip.jpg
+    images/daisy.jpg
+    images/sunflower.jpg
+    )
 ```
 
 ```c++
 int foo() {
-  auto rose = cmrc::open("flowers/rose.jpg");
+    auto fs = cmrc::flower::get_embedded_filesystem();
+    auto rose = fs.open("flowers/rose.jpg");
 }
 ```
