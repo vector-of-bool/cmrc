@@ -68,7 +68,7 @@ cmrc_add_test(
 
 cmrc_add_test(
     NAME iterate
-    PASS_REGEX "^file_a.txt\nfile_b.txt\n$"
+    PASS_REGEX "^subdir_a\nfile_a.txt\nfile_b.txt\n$"
     RESOURCES
         subdir_a/subdir_b/file_a.txt
         subdir_a/subdir_b/file_b.txt

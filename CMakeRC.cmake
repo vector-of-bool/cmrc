@@ -269,7 +269,7 @@ inline std::string normalize_path(std::string path) {
     while (path.find("/") == 0) {
         path.erase(path.begin());
     }
-    while (path.rfind("/") == path.size() - 1) {
+    while (!path.empty() && (path.rfind("/") == path.size() - 1)) {
         path.pop_back();
     }
     auto off = path.npos;
@@ -320,7 +320,6 @@ using directory_iterator = detail::directory::iterator;
 class embedded_filesystem {
     // Never-null:
     const cmrc::detail::index_type* _index;
-    const cmrc::detail::directory* _root;
     const detail::file_or_directory* _get(std::string path) const {
         path = detail::normalize_path(path);
         auto found = _index->find(path);
@@ -332,12 +331,9 @@ class embedded_filesystem {
     }
 
 public:
-    embedded_filesystem(const detail::index_type& index, const cmrc::detail::directory& dir)
+    explicit embedded_filesystem(const detail::index_type& index)
         : _index(&index)
-        , _root(&dir)
-    {
-      (void)_root;
-    }
+    {}
 
     file open(const std::string& path) const {
         auto entry_ptr = _get(path);
@@ -430,26 +426,29 @@ function(cmrc_add_resource_library name)
 
         namespace {
 
-        std::pair<const cmrc::detail::index_type*, const cmrc::detail::directory*>
-        get_root_dir() {
+        const cmrc::detail::index_type&
+        get_root_index() {
             static cmrc::detail::directory root_directory_;
+            static cmrc::detail::file_or_directory root_directory_fod{root_directory_};
             static cmrc::detail::index_type root_index;
+            root_index.emplace("", &root_directory_fod);
             struct dir_inl {
                 class cmrc::detail::directory& directory;
             };
             dir_inl root_directory_dir{root_directory_};
+            (void)root_directory_dir;
             $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_MAKE_DIRS>,
             >
             $<JOIN:$<TARGET_PROPERTY:@libname@,CMRC_MAKE_FILES>,
             >
-            return std::make_pair(&root_index, &root_directory_);
+            return root_index;
         }
 
         }
 
         cmrc::embedded_filesystem get_filesystem() {
-            static auto pair = get_root_dir();
-            return cmrc::embedded_filesystem{*pair.first, *pair.second};
+            static auto& index = get_root_index();
+            return cmrc::embedded_filesystem{index};
         }
 
         } // @ARG_NAMESPACE@
