@@ -67,14 +67,15 @@ set(hpp_content [==[
 #ifndef CMRC_CMRC_HPP_INCLUDED
 #define CMRC_CMRC_HPP_INCLUDED
 
-#include <string>
-#include <map>
-#include <mutex>
-#include <list>
-#include <type_traits>
 #include <cassert>
 #include <functional>
+#include <iterator>
+#include <list>
+#include <map>
+#include <mutex>
+#include <string>
 #include <system_error>
+#include <type_traits>
 
 namespace cmrc { namespace detail { struct dummy; } }
 
@@ -100,7 +101,7 @@ public:
     iterator cbegin() const noexcept { return _begin; }
     iterator end() const noexcept { return _end; }
     iterator cend() const noexcept { return _end; }
-    std::size_t size() const { return std::difference(begin(), end()); }
+    std::size_t size() const { return std::distance(begin(), end()); }
 
     file() = default;
     file(iterator beg, iterator end) noexcept : _begin(beg), _end(end) {}
