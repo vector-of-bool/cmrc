@@ -42,9 +42,8 @@ need.
 ## Usage
 
 1. Once installed, simply import the `CMakeRC.cmake` script. If you placed the
-   module in your project directory (recommended), simply use `include
-   (CMakeRC.cmake)` to import the module. If you installed it as a package, use
-   `find_package(CMakeRC)`.
+   module in your project directory (recommended), simply use `include(CMakeRC)`
+   to import the module. If you installed it as a package, use `find_package(CMakeRC)`.
 
 2. Once included, create a new resource library using `cmrc_add_resource_library`,
    like this:
@@ -60,7 +59,7 @@ need.
   the resource library (recommended):
 
   ```cmake
-  `cmrc_add_resource_library`(foo-resources ALIAS foo::rc)
+  cmrc_add_resource_library(foo-resources ALIAS foo::rc ...)
   ```
 
   **Note:** If the name of the library target is not a valid C++ `namespace`
@@ -68,7 +67,7 @@ need.
   name of the library will be used as the resource library's namespace.
 
   ```cmake
-  cmrc_add_resource_library(foo-resources ALIAS foo::rc NAMESPACE foo)
+  cmrc_add_resource_library(foo-resources ALIAS foo::rc NAMESPACE foo  ...)
   ```
 
 3. To use the resource library, link the resource library target into a binary
@@ -92,7 +91,7 @@ need.
    }
    ```
 
-5. At global scope within the `.cpp` file, place the `CMRC_DECLARE(ns)` macro
+5. At global scope within the `.cpp` file, place the `CMRC_DECLARE(<my-lib-ns>)` macro
    using the namespace that was designated with `cmrc_add_resource_library` (or
    the library name if no namespace was specified):
 
@@ -107,26 +106,25 @@ need.
    ```
 
 6. Obtain a handle to the embedded resource filesystem by calling the
-   `get_embedded_filesystem()` function in the generated namespace. It will be
-   generated at `cmrc::<my-lib-ns>::get_embedded_filesystem()`.
+   `get_filesystem()` function in the generated namespace. It will be
+   generated at `cmrc::<my-lib-ns>::get_filesystem()`.
 
    ```c++
    int main() {
-       auto fs = cmrc::foo::get_embedded_filesystem();
+       auto fs = cmrc::foo::get_filesystem();
    }
    ```
 
    (This function was declared by the `CMRC_DECLARE()` macro from the previous
    step.)
 
-   You're now ready to work with the files in your resource library! See the
-   section on `embedded_filesystem`
+   You're now ready to work with the files in your resource library!
+   See the section on `cmrc::embedded_filesystem`.
 
 ## The `cmrc::embedded_filesystem` API
 
-All resource libraries will their own `cmrc::embedded_filesystem`, which can be
-accessed with the `get_embedded_filesystem()` function declared by
-`CMRC_DECLARE()`.
+All resource libraries have their own `cmrc::embedded_filesystem` that can be
+accessed with the `get_filesystem()` function declared by `CMRC_DECLARE()`.
 
 This class is trivially copyable and destructible, and acts as a handle to the
 statically allocated resource library data.
@@ -221,7 +219,7 @@ cmrc_add_resource_library(
 
 ```c++
 int foo() {
-    auto fs = cmrc::flower::get_embedded_filesystem();
+    auto fs = cmrc::flower::get_filesystem();
     auto rose = fs.open("flowers/rose.jpg");
 }
 ```
