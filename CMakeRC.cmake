@@ -101,7 +101,7 @@ public:
     iterator cbegin() const noexcept { return _begin; }
     iterator end() const noexcept { return _end; }
     iterator cend() const noexcept { return _end; }
-    std::size_t size() const { return std::distance(begin(), end()); }
+    std::size_t size() const { return static_cast<std::size_t>(std::distance(begin(), end())); }
 
     file() = default;
     file(iterator beg, iterator end) noexcept : _begin(beg), _end(end) {}
@@ -275,7 +275,7 @@ inline std::string normalize_path(std::string path) {
     }
     auto off = path.npos;
     while ((off = path.find("//")) != path.npos) {
-        path.erase(path.begin() + off);
+        path.erase(path.begin() + static_cast<std::string::difference_type>(off));
     }
     return path;
 }
