@@ -299,7 +299,7 @@ public:
         return _fname;
     }
     std::string filename() const && {
-        return std::move(_fname);
+        return _fname;
     }
 
     bool is_file() const {
