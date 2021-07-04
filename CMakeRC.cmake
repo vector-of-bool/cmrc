@@ -77,6 +77,10 @@ set(hpp_content [==[
 #include <system_error>
 #include <type_traits>
 
+#if !(defined(__EXCEPTIONS) || defined(__cpp_exceptions) || defined(_CPPUNWIND) || defined(CMRC_NO_EXCEPTIONS))
+#define CMRC_NO_EXCEPTIONS 1
+#endif
+
 namespace cmrc { namespace detail { struct dummy; } }
 
 #define CMRC_DECLARE(libid) \
@@ -339,7 +343,12 @@ public:
     file open(const std::string& path) const {
         auto entry_ptr = _get(path);
         if (!entry_ptr || !entry_ptr->is_file()) {
+#ifdef CMRC_NO_EXCEPTIONS
+            fprintf(stderr, "Error no such file or directory: %s\n", path.c_str());
+            abort();
+#else
             throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
+#endif
         }
         auto& dat = entry_ptr->as_file();
         return file{dat.begin_ptr, dat.end_ptr};
@@ -362,10 +371,20 @@ public:
     directory_iterator iterate_directory(const std::string& path) const {
         auto entry_ptr = _get(path);
         if (!entry_ptr) {
+#ifdef CMRC_NO_EXCEPTIONS
+            fprintf(stderr, "Error no such file or directory: %s\n", path.c_str());
+            abort();
+#else
             throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
+#endif
         }
         if (!entry_ptr->is_directory()) {
+#ifdef CMRC_NO_EXCEPTIONS
+            fprintf(stderr, "Error not a directory: %s\n", path.c_str());
+            abort();
+#else
             throw std::system_error(make_error_code(std::errc::not_a_directory), path);
+#endif
         }
         return entry_ptr->as_directory().begin();
     }
