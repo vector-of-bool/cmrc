@@ -394,7 +394,7 @@ set_property(TARGET cmrc-base PROPERTY INTERFACE_CXX_EXTENSIONS OFF)
 add_library(cmrc::base ALIAS cmrc-base)
 
 function(cmrc_add_resource_library name)
-    set(args ALIAS NAMESPACE)
+    set(args ALIAS NAMESPACE TYPE)
     cmake_parse_arguments(ARG "" "${args}" "" "${ARGN}")
     # Generate the identifier for the resource library's namespace
     set(ns_re "[a-zA-Z_][a-zA-Z0-9_]*")
@@ -410,6 +410,14 @@ function(cmrc_add_resource_library name)
         endif()
     endif()
     set(libname "${name}")
+    # Check that type is either "STATIC" or "OBJECT", or default to "STATIC" if
+    # not set
+    if(NOT DEFINED ARG_TYPE)
+        set(ARG_TYPE STATIC)
+    elseif(NOT "${ARG_TYPE}" MATCHES "^(STATIC|OBJECT)$")
+        message(SEND_ERROR "${ARG_TYPE} is not a valid TYPE (STATIC and OBJECT are acceptable)")
+        set(ARG_TYPE STATIC)
+    endif()
     # Generate a library with the compiled in character arrays.
     string(CONFIGURE [=[
         #include <cmrc/cmrc.hpp>
@@ -468,7 +476,7 @@ function(cmrc_add_resource_library name)
     # Generate the actual static library. Each source file is just a single file
     # with a character array compiled in containing the contents of the
     # corresponding resource file.
-    add_library(${name} STATIC ${libcpp})
+    add_library(${name} ${ARG_TYPE} ${libcpp})
     set_property(TARGET ${name} PROPERTY CMRC_LIBDIR "${libdir}")
     set_property(TARGET ${name} PROPERTY CMRC_NAMESPACE "${ARG_NAMESPACE}")
     target_link_libraries(${name} PUBLIC cmrc::base)
