@@ -248,14 +248,14 @@ public:
         }
 
         iterator operator++() noexcept {
-            auto cp = *this;
             ++_base_iter;
-            return cp;
+            return *this;
         }
 
         iterator& operator++(int) noexcept {
+            auto cp = *this;
             ++_base_iter;
-            return *this;
+            return cp;
         }
     };
 
