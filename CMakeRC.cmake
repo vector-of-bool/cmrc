@@ -585,7 +585,7 @@ function(cmrc_add_resources name)
         endif()
         get_filename_component(dirpath "${ARG_PREFIX}${relpath}" DIRECTORY)
         _cmrc_register_dirs("${name}" "${dirpath}")
-        get_filename_component(abs_out "${libdir}/intermediate/${relpath}.cpp" ABSOLUTE)
+        get_filename_component(abs_out "${libdir}/intermediate/${ARG_PREFIX}${relpath}.cpp" ABSOLUTE)
         # Generate a symbol name relpath the file's character array
         _cm_encode_fpath(sym "${relpath}")
         # Get the symbol name for the parent directory
