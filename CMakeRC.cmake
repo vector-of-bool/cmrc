@@ -247,15 +247,15 @@ public:
             return !(*this == rhs);
         }
 
-        iterator operator++() noexcept {
+        iterator& operator++() noexcept {
+            ++_base_iter;
+            return *this;
+        }
+
+        iterator operator++(int) noexcept {
             auto cp = *this;
             ++_base_iter;
             return cp;
-        }
-
-        iterator& operator++(int) noexcept {
-            ++_base_iter;
-            return *this;
         }
     };
 
