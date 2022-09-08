@@ -39,6 +39,8 @@ required is the `CMakeRC.cmake` script. You can copy it into your project
 directory (recommended) or install it as a package and get all the features you
 need.
 
+For [vcpkg](https://github.com/microsoft/vcpkg) users there is a `cmakerc` [port](https://github.com/microsoft/vcpkg/tree/master/ports/cmakerc) that can be installed via `vcpkg install cmakerc` or by adding it to `dependencies` section of your `vcpkg.json` file.
+
 ## Usage
 
 1. Once installed, simply import the `CMakeRC.cmake` script. If you placed the
