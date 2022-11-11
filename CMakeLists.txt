@@ -14,3 +14,20 @@ if(BUILD_TESTS AND (PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR))
     endif()
     add_subdirectory(tests)
 endif()
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if(${CMAKE_VERSION} VERSION_LESS "3.14")
+    write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/cmakerc-config-version.cmake
+        COMPATIBILITY SameMajorVersion
+    )
+else()
+    write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/cmakerc-config-version.cmake
+        COMPATIBILITY SameMajorVersion
+        ARCH_INDEPENDENT
+    )
+endif()
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cmakerc-config-version.cmake DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/cmakerc)
+install(FILES CMakeRC.cmake DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/cmakerc RENAME cmakerc-config.cmake)
