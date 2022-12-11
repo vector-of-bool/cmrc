@@ -573,7 +573,7 @@ function(cmrc_add_resources name)
         # the intermediate directory.
         file(RELATIVE_PATH relpath "${ARG_WHENCE}" "${abs_in}")
         if(relpath MATCHES "^\\.\\.")
-            # For now we just error on files that exist outside of the soure dir.
+            # For now we just error on files that exist outside of the source dir.
             message(SEND_ERROR "Cannot add file '${input}': File must be in a subdirectory of ${ARG_WHENCE}")
             continue()
         endif()
