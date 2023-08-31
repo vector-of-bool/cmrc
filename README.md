@@ -41,7 +41,14 @@ need.
 
 For [vcpkg](https://github.com/microsoft/vcpkg) users there is a `cmakerc` [port](https://github.com/microsoft/vcpkg/tree/master/ports/cmakerc) that can be installed via `vcpkg install cmakerc` or by adding it to `dependencies` section of your `vcpkg.json` file.
 
+The following sections will demonstrate how to use CMRC.
+
+A complete example is available at the very end of the documentation if you are
+impatient or want to take a sneak peek.
+
 ## Usage
+
+The following steps outline how to use CMRC.
 
 1. Once installed, simply import the `CMakeRC.cmake` script. If you placed the
    module in your project directory (recommended), simply use `include(CMakeRC)`
@@ -57,20 +64,27 @@ For [vcpkg](https://github.com/microsoft/vcpkg) users there is a `cmakerc` [port
    Where `...` is simply a list of files that you wish to compile into the
    resource library.
 
-  You can use the `ALIAS` argument to immediately generate an alias target for
-  the resource library (recommended):
+   You can use the `ALIAS` argument to immediately generate an alias target for
+   the resource library (recommended):
 
-  ```cmake
-  cmrc_add_resource_library(foo-resources ALIAS foo::rc ...)
-  ```
+   ```cmake
+   cmrc_add_resource_library(foo-resources ALIAS foo::rc ...)
+   ```
 
-  **Note:** If the name of the library target is not a valid C++ `namespace`
-  identifier, you will need to provide the `NAMESPACE` argument. Otherwise, the
-  name of the library will be used as the resource library's namespace.
+   **Note:** If the name of the library target is not a valid C++ `namespace`
+   identifier, you will need to provide the `NAMESPACE` argument. Otherwise, the
+   name of the library will be used as the resource library's namespace.
 
-  ```cmake
-  cmrc_add_resource_library(foo-resources ALIAS foo::rc NAMESPACE foo  ...)
-  ```
+   ```cmake
+   cmrc_add_resource_library(foo-resources ALIAS foo::rc NAMESPACE foo  ...)
+   ```
+
+   When the library is created you can at any time add additional resources:
+
+   ```cmake
+   cmrc_add_resources(foo-resources ...)
+   ```
+
 
 3. To use the resource library, link the resource library target into a binary
    using `target_link_libraries()`:
@@ -133,18 +147,46 @@ statically allocated resource library data.
 
 ### Methods on `cmrc::embedded_filesystem`
 
-- `open(const std::string& path) -> cmrc::file` - Opens and returns a
-  non-directory `file` object at `path`, or throws `std::system_error()` on
-  error.
+Filesystem inspection:
+
 - `is_file(const std::string& path) -> bool` - Returns `true` if the given
-  `path` names a regular file, `false` otherwise.
+  `path` names a regular file, `false` otherwise
 - `is_directory(const std::string& path) -> bool` - Returns `true` if the given
-  `path` names a directory. `false` otherwise.
-- `exists(const std::string& path) -> bool` returns `true` if the given path
-  names an existing file or directory, `false` otherwise.
-- `iterate_directory(const std::string& path) -> cmrc::directory_iterator`
-  returns a directory iterator for iterating the contents of a directory. Throws
-  if the given `path` does not identify a directory.
+  `path` names a directory. `false` otherwise
+- `exists(const std::string& path) -> bool` - Returns `true` if the given path
+  names an existing file or directory, `false` otherwise
+- `iterate_directory(const std::string& path) -> cmrc::directory_iterator` -
+  Returns a directory iterator for iterating the contents of a directory, or
+  throws if the given `path` does not identify a directory
+- `get_size(const std::string& path) -> std::size_t` - Returns the size in bytes
+  of the file `path`, or throw `std::system_error()` on error
+
+File access (these will throw `std::system_error()` if used on a directory):
+
+- `open(const std::string& path) -> cmrc::file` - Opens `path` and returns a
+  `file` object from where data can be read
+- `get_as_string(const std::string& path) -> std::string` - Returns a copy of
+  the data for `path` as a `std::string`
+- `get_as_string_view(const std::string& path) -> std::string_view` - Returns
+  the data for `path` as a `std::string_view` (no deep copy, requires C++17)
+- `get_as_raw_ptr(const std::string& path) -> const char*` -
+  Returns a raw `const char*` pointer to the the non-directory data at `path`
+- `get_as_raw_ptr(const std::string& path, std::size_t& file_size) -> const char*` -
+  Returns a raw `const char*` pointer to the non-directory data at `path` and
+  updates the supplied `file_size` reference with the data size
+
+If you want to use `get_as_string_view()` you need a C++17 (or newer) compliant
+compiler. Example CMake configuration for this:
+
+```cmake
+target_compile_features(your_target PRIVATE cxx_std_17)
+if(MSVC)
+    # MSVC favors their own backwards compatibilty over standards compliance.
+    # The below option ensures the __cplusplus pre-processing variable in MSVC
+    # is actually standards compliant.
+    target_compile_options(your_target PRIVATE "/Zc:__cplusplus")
+endif()
+```
 
 ## Members of `cmrc::file`
 
@@ -178,6 +220,10 @@ After calling `cmrc_add_resource_library`, you can add additional resources to
 the library using `cmrc_add_resources` with the name of the library and the
 paths to any additional resources that you wish to compile in. This way you can
 lazily add resources to the library as your configure script runs.
+
+Resources are always stored with an extra trailing `null` byte to facilitate
+the direct use of data as C strings if needed. The `null` byte is not a part of
+the actual data and does not count towards its size.
 
 Both `cmrc_add_resource_library` and `cmrc_add_resources` take two additional
 keyword parameters:
@@ -219,9 +265,131 @@ cmrc_add_resource_library(
     )
 ```
 
+This will result in the following files in the resource file system:
+
+```
+flowers/rose.jpg
+flowers/tulip.jpg
+flowers/daisy.jpg
+flowers/sunflower.jpg
+```
+
+## A complete example
+
+This complete example shows how to use the library and the different ways
+resources can be accessed. Only text file resources are used in this
+example, but binary data is of course supported using the same interface.
+
+**Files needed:**
+```cmake
+CMakeLists.txt
+example.cpp
+CMakeRC.cmake  # Module file copied from the CMRC project
+LICENSE.txt    # Added resource
+README.txt     # Added resource
+```
+
+**CMakeLists.txt**
+
+```cmake
+# Require a decent version of CMake
+cmake_minimum_required(VERSION 3.6)
+
+# Include the CMRC module
+include(./CMakeRC.cmake)
+
+# Define the example project
+project(cmrc_example)
+
+# Add an executable to the project
+add_executable(cmrc_example example.cpp)
+
+# In this case we would like to use get_as_string_view() which requries C++17.
+# If this is not needed the following lines can be skipped.
+target_compile_features(cmrc_example PRIVATE cxx_std_17)
+if(MSVC)
+    # MSVC favors their own backwards compatibilty over standards compliance.
+    # The below option ensures the __cplusplus pre-processing variable in MSVC
+    # is actually standards compliant.
+    target_compile_options(cmrc_example PRIVATE "/Zc:__cplusplus")
+endif()
+
+# Create a "resource library" called "myrclib" which will hold the resources.
+# We also create a CMake ALIAS to the library which can be used when linking.
+# Finally we choose to add a text file as a first resource.
+cmrc_add_resource_library(
+    myrclib
+    NAMESPACE rc
+    ALIAS cmrc_example::rc
+
+    LICENSE.txt
+)
+
+# Add more resource files to the library
+cmrc_add_resources(myrclib README.txt)
+
+# Add the resource library using the library ALIAS
+target_link_libraries(cmrc_example PRIVATE cmrc_example::rc)
+
+# ... or using the library name if preferred
+#target_link_libraries(cmrc_example PRIVATE myrclib)
+```
+
+**example.cpp**
+
 ```c++
-int foo() {
-    auto fs = cmrc::flower::get_filesystem();
-    auto rose = fs.open("flowers/rose.jpg");
+#include <cmrc/cmrc.hpp>
+#include <iostream>
+
+// Declare the resource library. Use the NAMESPACE specified in CMakeFile.txt.
+CMRC_DECLARE(rc);
+
+// Small helper to make output tidy
+void header(const char *s) {
+    std::cout << "\n\n---===[ " << s << " ]===---\n\n";
+}
+
+int main() {
+    // Get the filesystem object from the specified namespace (under cmrc::)
+    auto fs = cmrc::rc::get_filesystem();
+
+    // Access the text file resource in all possible ways and display the contents each time
+
+    header("open() returning iterable cmrc::file object");
+    auto license_file = fs.open("LICENSE.txt");
+    for(auto i = license_file.begin(); i != license_file.end(); ++i) {
+        std::cout << *i;
+    }
+    std::cout << "\n";
+
+    header("String (std::string), will return a copy of the data");
+    auto license_string= fs.get_as_string("LICENSE.txt");
+    std::cout << license_string << "\n";
+
+    header("String view (std::string_view), read-only view, avoids a copy of the data");
+    auto license_string_view = fs.get_as_string_view("LICENSE.txt");
+    std::cout << license_string_view << "\n";
+
+    header("String view (std::string_view) again, accessed using a raw pointer");
+    auto license_string_view2 = fs.get_as_string_view("LICENSE.txt");
+    auto license_string_view2_data = license_string_view2.data(); // const char*
+    auto license_string_view2_size = license_string_view2.size(); // std::size_t
+    std::cout << std::string(license_string_view2_data, license_string_view2_size) << "\n";
+
+    header("Raw pointer (const char*), relying on CMRC implicit trailing NULL byte");
+    auto license_raw_ptr = fs.get_as_raw_ptr("LICENSE.txt");
+    std::cout << std::string(license_raw_ptr) << "\n"; // Trailing NULL byte needed!
+
+    header("Raw pointer (const char*) with size return argument");
+    std::size_t license_raw_ptr2_size;
+    auto license_raw_ptr2 = fs.get_as_raw_ptr("LICENSE.txt", license_raw_ptr2_size);
+    std::cout << std::string(license_raw_ptr2, license_raw_ptr2_size) << "\n";
+
+    header("Raw pointer (const char*) and size (std::size_t)");
+    auto license_raw_ptr3 = fs.get_as_raw_ptr("LICENSE.txt");
+    auto license_raw_ptr3_size = fs.get_size("LICENSE.txt");
+    std::cout << std::string(license_raw_ptr3, license_raw_ptr3_size) << "\n";
+
+    return 0;
 }
 ```
