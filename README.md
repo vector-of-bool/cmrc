@@ -41,6 +41,8 @@ need.
 
 For [vcpkg](https://github.com/microsoft/vcpkg) users there is a `cmakerc` [port](https://github.com/microsoft/vcpkg/tree/master/ports/cmakerc) that can be installed via `vcpkg install cmakerc` or by adding it to `dependencies` section of your `vcpkg.json` file.
 
+The [MSYS2](https://www.msys2.org/) users can install the appropriate `cmakerc` [package](https://packages.msys2.org/base/mingw-w64-cmakerc) using `pacman -S ${MINGW_PACKAGE_PREFIX}-cmakerc` command.
+
 ## Usage
 
 1. Once installed, simply import the `CMakeRC.cmake` script. If you placed the
