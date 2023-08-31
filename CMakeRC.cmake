@@ -340,7 +340,7 @@ public:
         : _index(&index)
     {}
 
-    file open(const std::string& path) const {
+    const detail::file_data& _get_file_data(const std::string& path) const {
         auto entry_ptr = _get(path);
         if (!entry_ptr || !entry_ptr->is_file()) {
 #ifdef CMRC_NO_EXCEPTIONS
@@ -350,8 +350,44 @@ public:
             throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
 #endif
         }
-        auto& dat = entry_ptr->as_file();
+        return entry_ptr->as_file();
+    }
+
+    file open(const std::string& path) const {
+        auto& dat = _get_file_data(path);
         return file{dat.begin_ptr, dat.end_ptr};
+    }
+
+    std::string get_as_string(const std::string& path) const {
+        auto& dat = _get_file_data(path);
+        auto f = file{dat.begin_ptr, dat.end_ptr};
+        return std::string{dat.begin_ptr, f.size()};
+    }
+
+#if __cplusplus >= 201703L
+    std::string_view get_as_string_view(const std::string& path) const {
+        auto& dat = _get_file_data(path);
+        auto f = file{dat.begin_ptr, dat.end_ptr};
+        return std::string_view{dat.begin_ptr, f.size()};
+    }
+#endif
+
+    const char* get_as_raw_ptr(const std::string& path, std::size_t& file_size) const {
+        auto& dat = _get_file_data(path);
+        auto f = file{dat.begin_ptr, dat.end_ptr};
+        file_size = f.size();
+        return dat.begin_ptr;
+    }
+
+    const char* get_as_raw_ptr(const std::string& path) const {
+        std::size_t sz;
+        return get_as_raw_ptr(path, sz);
+    }
+
+    std::size_t get_size(const std::string& path) const {
+        auto& dat = _get_file_data(path);
+        auto f = file{dat.begin_ptr, dat.end_ptr};
+        return f.size();
     }
 
     bool is_file(const std::string& path) const noexcept {
