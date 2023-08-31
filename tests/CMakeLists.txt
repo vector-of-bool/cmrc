@@ -101,6 +101,17 @@ cmrc_add_test(
     )
 
 cmrc_add_test(
+    NAME fileaccess
+    RESOURCES flower.jpg
+    TEST_ARGV "${CMAKE_CURRENT_SOURCE_DIR}/flower.jpg"
+    )
+target_compile_features(fileaccess PRIVATE cxx_std_17)
+if(MSVC)
+    # MSVC favors their own backwards compatibilty over standards compliance
+    target_compile_options(fileaccess PRIVATE "/Zc:__cplusplus")
+endif()
+
+cmrc_add_test(
     NAME enoent
     WILL_FAIL
     )
