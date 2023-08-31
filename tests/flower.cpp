@@ -35,4 +35,5 @@ int main(int argc, char** argv) {
         std::cerr << "Flower file contents do not match\n";
         return 1;
     }
+    return 0;
 }
