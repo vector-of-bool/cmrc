@@ -39,6 +39,32 @@ cmrc_add_test(
     )
 
 cmrc_add_test(
+    NAME simple_string
+    PASS_REGEX "^Hello, world!"
+    RESOURCES
+        hello.txt
+    )
+
+cmrc_add_test(
+    NAME simple_string_view
+    PASS_REGEX "^Hello, world!"
+    RESOURCES
+        hello.txt
+    )
+target_compile_features(simple_string_view PRIVATE cxx_std_17)
+if(MSVC)
+    # MSVC favors their own backwards compatibilty over standards compliance
+    target_compile_options(simple_string_view PRIVATE "/Zc:__cplusplus")
+endif()
+
+cmrc_add_test(
+    NAME simple_raw_ptr
+    PASS_REGEX "^Hello, world!"
+    RESOURCES
+        hello.txt
+    )
+
+cmrc_add_test(
     NAME flower
     RESOURCES flower.jpg
     TEST_ARGV "${CMAKE_CURRENT_SOURCE_DIR}/flower.jpg"
@@ -73,6 +99,17 @@ cmrc_add_test(
         subdir_a/subdir_b/file_a.txt
         subdir_a/subdir_b/file_b.txt
     )
+
+cmrc_add_test(
+    NAME fileaccess
+    RESOURCES flower.jpg
+    TEST_ARGV "${CMAKE_CURRENT_SOURCE_DIR}/flower.jpg"
+    )
+target_compile_features(fileaccess PRIVATE cxx_std_17)
+if(MSVC)
+    # MSVC favors their own backwards compatibilty over standards compliance
+    target_compile_options(fileaccess PRIVATE "/Zc:__cplusplus")
+endif()
 
 cmrc_add_test(
     NAME enoent
