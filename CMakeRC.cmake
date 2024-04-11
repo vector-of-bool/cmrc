@@ -74,6 +74,7 @@ set(hpp_content [==[
 #include <map>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <type_traits>
 
@@ -157,7 +158,7 @@ public:
     file_data(const char* b, const char* e) : begin_ptr(b), end_ptr(e) {}
 };
 
-inline std::pair<std::string, std::string> split_path(const std::string& path) {
+inline std::pair<std::string_view, std::string_view> split_path(const std::string_view path) {
     auto first_sep = path.find("/");
     if (first_sep == path.npos) {
         return std::make_pair(path, "");
@@ -174,9 +175,10 @@ struct created_subdirectory {
 class directory {
     std::list<file_data> _files;
     std::list<directory> _dirs;
-    std::map<std::string, file_or_directory> _index;
+    using index_type = std::map<std::string, file_or_directory, std::less<>>;
+    index_type _index;
 
-    using base_iterator = std::map<std::string, file_or_directory>::const_iterator;
+    using base_iterator = typename index_type::const_iterator;
 
 public:
 
@@ -186,17 +188,17 @@ public:
     created_subdirectory add_subdir(std::string name) & {
         _dirs.emplace_back();
         auto& back = _dirs.back();
-        auto& fod = _index.emplace(name, file_or_directory{back}).first->second;
+        auto& fod = _index.emplace(std::move(name), file_or_directory{back}).first->second;
         return created_subdirectory{back, fod};
     }
 
     file_or_directory* add_file(std::string name, const char* begin, const char* end) & {
         assert(_index.find(name) == _index.end());
         _files.emplace_back(begin, end);
-        return &_index.emplace(name, file_or_directory{_files.back()}).first->second;
+        return &_index.emplace(std::move(name), file_or_directory{_files.back()}).first->second;
     }
 
-    const file_or_directory* get(const std::string& path) const {
+    const file_or_directory* get(const std::string_view path) const {
         auto pair = split_path(path);
         auto child = _index.find(pair.first);
         if (child == _index.end()) {
@@ -270,6 +272,21 @@ public:
     }
 };
 
+inline std::string normalize_path(std::string_view path) {
+    while (path.find("/") == 0) {
+        path.remove_prefix(1);
+    }
+    while (!path.empty() && (path.rfind("/") == path.size() - 1)) {
+        path.remove_suffix(1);
+    }
+    auto off = path.npos;
+    std::string result(path);
+    while ((off = result.find("//")) != result.npos) {
+        result.erase(result.begin() + static_cast<std::string::difference_type>(off));
+    }
+    return result;
+}
+
 inline std::string normalize_path(std::string path) {
     while (path.find("/") == 0) {
         path.erase(path.begin());
@@ -284,7 +301,7 @@ inline std::string normalize_path(std::string path) {
     return path;
 }
 
-using index_type = std::map<std::string, const cmrc::detail::file_or_directory*>;
+using index_type = std::map<std::string, const cmrc::detail::file_or_directory*, std::less<>>;
 
 } // detail
 
@@ -295,7 +312,7 @@ class directory_entry {
 public:
     directory_entry() = delete;
     explicit directory_entry(std::string filename, const detail::file_or_directory& item)
-        : _fname(filename)
+        : _fname(std::move(filename))
         , _item(&item)
     {}
 
@@ -325,9 +342,9 @@ using directory_iterator = detail::directory::iterator;
 class embedded_filesystem {
     // Never-null:
     const cmrc::detail::index_type* _index;
-    const detail::file_or_directory* _get(std::string path) const {
-        path = detail::normalize_path(path);
-        auto found = _index->find(path);
+    const detail::file_or_directory* _get(std::string_view path) const {
+        auto normalized = detail::normalize_path(path);
+        auto found = _index->find(normalized);
         if (found == _index->end()) {
             return nullptr;
         } else {
@@ -340,50 +357,50 @@ public:
         : _index(&index)
     {}
 
-    file open(const std::string& path) const {
+    file open(const std::string_view path) const {
         auto entry_ptr = _get(path);
         if (!entry_ptr || !entry_ptr->is_file()) {
 #ifdef CMRC_NO_EXCEPTIONS
-            fprintf(stderr, "Error no such file or directory: %s\n", path.c_str());
+            fprintf(stderr, "Error no such file or directory: %s\n", path.data());
             abort();
 #else
-            throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
+            throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path.data());
 #endif
         }
         auto& dat = entry_ptr->as_file();
         return file{dat.begin_ptr, dat.end_ptr};
     }
 
-    bool is_file(const std::string& path) const noexcept {
+    bool is_file(const std::string_view path) const noexcept {
         auto entry_ptr = _get(path);
         return entry_ptr && entry_ptr->is_file();
     }
 
-    bool is_directory(const std::string& path) const noexcept {
+    bool is_directory(const std::string_view path) const noexcept {
         auto entry_ptr = _get(path);
         return entry_ptr && entry_ptr->is_directory();
     }
 
-    bool exists(const std::string& path) const noexcept {
+    bool exists(const std::string_view path) const noexcept {
         return !!_get(path);
     }
 
-    directory_iterator iterate_directory(const std::string& path) const {
+    directory_iterator iterate_directory(const std::string_view path) const {
         auto entry_ptr = _get(path);
         if (!entry_ptr) {
 #ifdef CMRC_NO_EXCEPTIONS
-            fprintf(stderr, "Error no such file or directory: %s\n", path.c_str());
+            fprintf(stderr, "Error no such file or directory: %s\n", path.data());
             abort();
 #else
-            throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path);
+            throw std::system_error(make_error_code(std::errc::no_such_file_or_directory), path.data());
 #endif
         }
         if (!entry_ptr->is_directory()) {
 #ifdef CMRC_NO_EXCEPTIONS
-            fprintf(stderr, "Error not a directory: %s\n", path.c_str());
+            fprintf(stderr, "Error not a directory: %s\n", path.data());
             abort();
 #else
-            throw std::system_error(make_error_code(std::errc::not_a_directory), path);
+            throw std::system_error(make_error_code(std::errc::not_a_directory), path.data());
 #endif
         }
         return entry_ptr->as_directory().begin();
