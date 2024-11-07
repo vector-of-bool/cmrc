@@ -1,3 +1,5 @@
+This branch aims to make CMRC compatible with older C++ versions (eg C++03)
+
 # CMakeRC - A Standalone CMake-Based C++ Resource Compiler
 
 CMakeRC is a resource compiler provided in a single CMake script that can easily
